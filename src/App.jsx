@@ -40,10 +40,15 @@ export default function App() {
     setCurrentDateString(today);
   }, []);
 
-  // Helper function to automatically calculate Hospital Day based on admission date
+  // Helper function to calculate Hospital Day where admission date is Day 0
   const calculateHospitalDay = (admissionDateStr) => {
-    if (!admissionDateStr) return 1;
-    const admissionDate = new Date(admissionDateStr);
+    if (!admissionDateStr) return 0;
+    
+    // Split the YYYY-MM-DD string to avoid UTC/local timezone shift bugs
+    const parts = admissionDateStr.split('-');
+    if (parts.length !== 3) return 0;
+    
+    const admissionDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
     const today = new Date();
     
     // Reset time portions to compare calendar days accurately
@@ -51,10 +56,10 @@ export default function App() {
     today.setHours(0, 0, 0, 0);
     
     const diffTime = today - admissionDate;
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     
-    // Day 1 is the day of admission, so we add 1. If it's a future or same-day date, default to at least 1.
-    return diffDays >= 0 ? diffDays + 1 : 1;
+    // Admission day is Day 0. If it's a future date, default to 0.
+    return diffDays >= 0 ? diffDays : 0;
   };
 
   // Sample initial data reflecting Dr. Jose P. Rizal Memorial District Hospital inpatients (Last Name, Given Name format)
