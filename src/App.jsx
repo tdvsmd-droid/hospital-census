@@ -30,6 +30,7 @@ export default function App() {
     currentCondition: '',
     diagnostics: '',
     therapeutics: '',
+    remarks: '',
     status: 'Stable'
   });
 
@@ -75,7 +76,8 @@ export default function App() {
       endorsement: {
         currentCondition: 'Stable, conscious, coherent, mild productive cough.',
         diagnostics: 'CBC pending. Chest X-ray showed clearing infiltrates.',
-        therapeutics: 'IV Levofloxacin 500mg OD, Salbutamol nebulization Q6H.'
+        therapeutics: 'IV Levofloxacin 500mg OD, Salbutamol nebulization Q6H.',
+        remarks: 'Waiting for relative to bring PhilHealth forms.'
       },
       status: 'MGH',
       isReferral: false
@@ -91,7 +93,8 @@ export default function App() {
       endorsement: {
         currentCondition: 'Newly admitted, awaiting bed allocation.',
         diagnostics: 'Initial labs ordered.',
-        therapeutics: 'Pending initial hospital orders.'
+        therapeutics: 'Pending initial hospital orders.',
+        remarks: 'Needs strict monitoring of capillary blood sugar every 2 hours.'
       },
       status: 'New Admission',
       isReferral: false
@@ -237,7 +240,8 @@ export default function App() {
       endorsement: {
         currentCondition: formData.currentCondition || (isReferralSave ? 'Newly referred patient.' : 'Newly admitted, stable.'),
         diagnostics: formData.diagnostics || 'Pending labs.',
-        therapeutics: formData.therapeutics || 'As per initial orders.'
+        therapeutics: formData.therapeutics || 'As per initial orders.',
+        remarks: formData.remarks || ''
       },
       status: assignedStatus,
       physician: formData.physician,
@@ -255,6 +259,7 @@ export default function App() {
       currentCondition: patient.endorsement?.currentCondition || '',
       diagnostics: patient.endorsement?.diagnostics || '',
       therapeutics: patient.endorsement?.therapeutics || '',
+      remarks: patient.endorsement?.remarks || '',
       status: patient.status || 'Stable'
     });
     setIsEditingClinical(true);
@@ -272,7 +277,8 @@ export default function App() {
           endorsement: {
             currentCondition: clinicalForm.currentCondition,
             diagnostics: clinicalForm.diagnostics,
-            therapeutics: clinicalForm.therapeutics
+            therapeutics: clinicalForm.therapeutics,
+            remarks: clinicalForm.remarks
           }
         };
         setSelectedPatient(updated);
@@ -548,12 +554,22 @@ export default function App() {
                 />
               </div>
 
-              <div style={{ marginBottom: '15px' }}>
+              <div style={{ marginBottom: '12px' }}>
                 <label style={styles.label}>Endorsement: Therapeutics / Medications</label>
                 <textarea 
                   rows="2" 
                   value={clinicalForm.therapeutics} 
                   onChange={(e) => setClinicalForm({...clinicalForm, therapeutics: e.target.value})}
+                  style={styles.textarea}
+                />
+              </div>
+
+              <div style={{ marginBottom: '15px' }}>
+                <label style={styles.label}>Endorsement: Remarks / Notes</label>
+                <textarea 
+                  rows="2" 
+                  value={clinicalForm.remarks} 
+                  onChange={(e) => setClinicalForm({...clinicalForm, remarks: e.target.value})}
                   style={styles.textarea}
                 />
               </div>
@@ -574,6 +590,9 @@ export default function App() {
                 <p><strong>Current Condition:</strong> {selectedPatient.endorsement?.currentCondition}</p>
                 <p><strong>Diagnostics:</strong> {selectedPatient.endorsement?.diagnostics}</p>
                 <p><strong>Therapeutics:</strong> {selectedPatient.endorsement?.therapeutics}</p>
+                {selectedPatient.endorsement?.remarks && (
+                  <p><strong>Remarks:</strong> {selectedPatient.endorsement?.remarks}</p>
+                )}
               </div>
 
               <p><strong>Status / Disposition:</strong> <span style={styles.statusBadge(selectedPatient.status)}>{selectedPatient.status}</span></p>

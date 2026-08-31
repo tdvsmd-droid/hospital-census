@@ -9,10 +9,11 @@ export default function PatientModal({ room, allRooms, patient, onClose, onSave 
     diagnosis: patient ? patient.admittingDiagnosis : '',
     physician: patient ? (patient.physician || '') : '',
     status: patient ? patient.status : 'New Admission',
-    // Endorsement fields added directly upon intake
+    // Endorsement fields including remarks
     currentCondition: patient ? (patient.endorsement?.currentCondition || '') : 'Stable, conscious, coherent.',
     diagnostics: patient ? (patient.endorsement?.diagnostics || '') : 'Pending baseline labs.',
-    therapeutics: patient ? (patient.endorsement?.therapeutics || '') : 'As per initial hospital orders.'
+    therapeutics: patient ? (patient.endorsement?.therapeutics || '') : 'As per initial hospital orders.',
+    remarks: patient ? (patient.endorsement?.remarks || '') : ''
   });
 
   // Local state for location input
@@ -148,12 +149,23 @@ export default function PatientModal({ room, allRooms, patient, onClose, onSave 
             />
           </div>
 
-          <div style={{ marginBottom: '15px' }}>
+          <div style={{ marginBottom: '10px' }}>
             <label style={styles.label}>Therapeutics / Medications</label>
             <textarea 
               rows="2"
               value={formData.therapeutics}
               onChange={(e) => setFormData({...formData, therapeutics: e.target.value})}
+              style={styles.textarea}
+            />
+          </div>
+
+          <div style={{ marginBottom: '15px' }}>
+            <label style={styles.label}>Remarks / Special Notes</label>
+            <textarea 
+              rows="2"
+              placeholder="e.g., Awaiting clearance, special monitoring instructions..."
+              value={formData.remarks}
+              onChange={(e) => setFormData({...formData, remarks: e.target.value})}
               style={styles.textarea}
             />
           </div>
