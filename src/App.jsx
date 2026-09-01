@@ -7,7 +7,14 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   
   // Date and Internist on Duty state for the Splash screen (persistent)
-  const [currentDateString, setCurrentDateString] = useState('');
+  const [currentDateString, setCurrentDateString] = useState(() => {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    const options = { month: 'long', day: 'numeric' };
+    return `${now.toLocaleDateString('en-US', options)} - ${tomorrow.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+  });
+
   const [internistOnDuty, setInternistOnDuty] = useState(() => {
     const savedInternist = localStorage.getItem('jrrmdh_internist');
     return savedInternist ? savedInternist : 'Dr. Maria Santos';
@@ -42,13 +49,6 @@ export default function App() {
     status: 'Stable'
   });
 
-  // Automatically set today's date on load
-  useEffect(() => {
-    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    const today = new Date().toLocaleDateString('en-US', options);
-    setCurrentDateString(today);
-  }, []);
-
   // Persistent Storage: Load patients from browser memory on startup
   const [patients, setPatients] = useState(() => {
     const savedPatients = localStorage.getItem('jrrmdh_patients');
@@ -59,7 +59,6 @@ export default function App() {
         console.error("Failed to parse saved patients", e);
       }
     }
-    // Default initial sample data if nothing is saved yet
     return [
       {
         id: 1,
@@ -177,33 +176,33 @@ export default function App() {
     return diffDays >= 0 ? diffDays : 0;
   };
 
-  // Endorsement Shift Snapshot Handler
+  // Endorsement Shift Snapshot Handler (Triggered from Splash Home Page)
   const handlePerformEndorsement = () => {
+    const incomingDoctor = prompt("Enter the name of the incoming Internist on Duty for the next shift:", "Dr. ");
+    if (!incomingDoctor) return; // User cancelled prompt
+
     const now = new Date();
     const tomorrow = new Date(now);
     tomorrow.setDate(now.getDate() + 1);
 
-    const options = { month: 'long', day: 'numeric', year: 'numeric' };
     const startDateFormatted = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-    const endDateFormatted = tomorrow.toLocaleDateString('en-US', options);
+    const endDateFormatted = tomorrow.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     const dutyPeriodSpan = `${startDateFormatted} - ${endDateFormatted}`;
 
-    const confirmMsg = `Perform noon endorsement snapshot for duty span [ ${dutyPeriodSpan} ]?\n\nThis will capture all ${patients.length} current patient records into the historical archive with their room arrangements, and prepare the census for the incoming shift.`;
-    
-    if (window.confirm(confirmMsg)) {
-      const snapshotRecord = {
-        id: Date.now(),
-        name: `Duty Shift Snapshot (${internistOnDuty})`,
-        ageSex: `${patients.length} Inpatients`,
-        admissionPeriod: dutyPeriodSpan,
-        finalImpression: `Endorsed by ${internistOnDuty}. Total active census: ${patients.length} patients.`,
-        isSnapshot: true,
-        snapshotPatients: [...patients]
-      };
+    const snapshotRecord = {
+      id: Date.now(),
+      name: `Duty Shift Snapshot (${internistOnDuty} -> ${incomingDoctor})`,
+      ageSex: `${patients.length} Inpatients`,
+      admissionPeriod: dutyPeriodSpan,
+      finalImpression: `Endorsed from ${internistOnDuty} to ${incomingDoctor}. Total active census: ${patients.length} patients.`,
+      isSnapshot: true,
+      snapshotPatients: [...patients]
+    };
 
-      setDischargedArchive(prev => [snapshotRecord, ...prev]);
-      alert(`Endorsement snapshot for ${dutyPeriodSpan} successfully saved to archives!`);
-    }
+    setDischargedArchive(prev => [snapshotRecord, ...prev]);
+    setInternistOnDuty(incomingDoctor);
+    setCurrentDateString(dutyPeriodSpan);
+    alert(`Shift successfully endorsed to ${incomingDoctor}!\nDuty Period updated to [ ${dutyPeriodSpan} ]. Snapshot saved to archives.`);
   };
 
   const openNewAdmissionModal = () => {
@@ -368,7 +367,7 @@ export default function App() {
     record.admissionPeriod.toLowerCase().includes(archiveSearchQuery.toLowerCase())
   );
 
-  // 1. Welcome Splash View
+  // 1. Welcome Splash View (Now includes Endorse Shift button)
   if (currentView === 'splash') {
     return (
       <div style={styles.splashContainer}>
@@ -378,11 +377,11 @@ export default function App() {
           
           <div style={styles.splashInfoBox}>
             <div style={styles.infoRow}>
-              <span style={styles.infoLabel}>📅 Date:</span>
-              <span style={styles.infoValue}>{currentDateString || 'Loading...'}</span>
+              <span style={styles.infoLabel}>📅 Duty Span:</span>
+              <span style={styles.infoValue}>{currentDateString}</span>
             </div>
             <div style={styles.infoRow}>
-              <span style={styles.infoLabel}>🩺 IM on Duty:</span>
+              <span style={styles.infoLabel}>👨‍⚕️ IM on Duty:</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {isEditingInternist ? (
                   <>
@@ -425,12 +424,19 @@ export default function App() {
             <span style={styles.badge}>Active Census: {patients.length}</span>
             <span style={styles.badgeArchive}>Archived Records: {dischargedArchive.length}</span>
           </div>
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <button 
               style={styles.enterButton} 
               onClick={() => setCurrentView('census')}
             >
               Enter Daily Census
+            </button>
+            <button 
+              style={styles.endorseSplashButton} 
+              onClick={handlePerformEndorsement}
+            >
+              🔄 Endorse Shift (New Duty Span & Handover)
             </button>
             <button 
               style={styles.archiveNavButton} 
@@ -494,13 +500,12 @@ export default function App() {
                 <div style={{ width: '100%' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h4 style={{ margin: '0 0 4px 0', color: record.isSnapshot ? '#28a745' : '#0056b3' }}>
-                      {record.isSnapshot ? `📌 ${record.name}` : record.name}
+                      {record.isSnapshot ? `📦 ${record.name}` : record.name}
                     </h4>
                     <span style={styles.periodBadge}>{record.admissionPeriod}</span>
                   </div>
                   <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#555' }}>{record.finalImpression}</p>
 
-                  {/* If this record is a duty snapshot, render its embedded patient table! */}
                   {record.isSnapshot && record.snapshotPatients && (
                     <div style={{ marginTop: '12px', overflowX: 'auto', border: '1px solid #ddd', borderRadius: '6px', background: '#fafafa', padding: '8px' }}>
                       <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#333', margin: '0 0 6px 0' }}>Endorsed Census Snapshot Table ({record.snapshotPatients.length} patients):</p>
@@ -627,7 +632,7 @@ export default function App() {
                   <option value="Improving">Improving</option>
                   <option value="Guarded">Guarded</option>
                   <option value="Critical">Critical</option>
-                  <option value="MGH">MGH (May Go Home - Pending Bills/Exit)</option>
+                  <option value="MGH">MGH (May Go Home)</option>
                   <option value="Transferred">Transferred</option>
                   <option value="Absconded">Absconded</option>
                   <option value="Expired">Expired</option>
@@ -766,9 +771,6 @@ export default function App() {
       <div style={styles.headerRow}>
         <h2>Internists on Duty: <span style={{ color: '#0056b3' }}>{internistOnDuty}</span></h2>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button style={styles.endorseButton} onClick={handlePerformEndorsement} title="Snapshot current census and archive duty span">
-            📋 Endorse Shift
-          </button>
           <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>
             + Admit
           </button>
@@ -776,7 +778,7 @@ export default function App() {
             + Referral
           </button>
           <button style={styles.archiveNavBtnHeader} onClick={() => setCurrentView('archive')}>
-            📚 Archive
+            Archive
           </button>
           <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>
             Home
@@ -933,8 +935,8 @@ const styles = {
   badge: { background: '#e3f2fd', color: '#0d47a1', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold' },
   badgeArchive: { background: '#fff3cd', color: '#856404', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold' },
   enterButton: { background: '#0056b3', color: 'white', border: 'none', padding: '12px 20px', fontSize: '15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
+  endorseSplashButton: { background: '#28a745', color: 'white', border: 'none', padding: '12px 20px', fontSize: '15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   archiveNavButton: { background: '#6c757d', color: 'white', border: 'none', padding: '12px 20px', fontSize: '15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
-  endorseButton: { background: '#28a745', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   admitNewButton: { background: '#007bff', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   archiveNavBtnHeader: { background: '#ffc107', color: '#333', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   container: { maxWidth: '900px', margin: '40px auto', padding: '20px', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif' },
