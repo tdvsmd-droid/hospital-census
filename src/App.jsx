@@ -590,7 +590,7 @@ export default function App() {
               </div>
 
               <div style={{ marginBottom: '15px' }}>
-                <label style={styles.label}>Endorsement: Remarks / Notes</label>
+                <label style={styles.label}>Endorsement: Remarks / Notes (Include DNI/DNR notes here)</label>
                 <textarea 
                   rows="2" 
                   value={clinicalForm.remarks} 
@@ -729,21 +729,52 @@ export default function App() {
       <div style={styles.roomGrid}>
         {allRooms.map(room => {
           const occupant = patients.find(p => p.wardRoom === room);
+          
+          let cardBg = '#ffffff';
+          let cardBorder = '#ddd';
+          let badgeBg = '#f1f3f5';
+          let badgeColor = '#6c757d';
+
+          if (occupant) {
+            const hDay = calculateHospitalDay(occupant.admissionDate);
+            if (hDay <= 1) {
+              cardBg = '#e3f2fd'; // Light blue
+              cardBorder = '#90caf9';
+              badgeBg = '#bbdefb';
+              badgeColor = '#0d47a1';
+            } else if (hDay >= 2 && hDay <= 7) {
+              cardBg = '#e8f5e9'; // Light green
+              cardBorder = '#a5d6a7';
+              badgeBg = '#c8e6c9';
+              badgeColor = '#1b5e20';
+            } else if (hDay >= 8 && hDay <= 14) {
+              cardBg = '#fff3e0'; // Light orange
+              cardBorder = '#ffcc80';
+              badgeBg = '#ffe0b2';
+              badgeColor = '#e65100';
+            } else {
+              cardBg = '#ffebee'; // Light red
+              cardBorder = '#ef9a9a';
+              badgeBg = '#ffcdd2';
+              badgeColor = '#b71c1c';
+            }
+          }
+
           return (
             <div 
               key={room}
               onClick={() => occupant && setSelectedPatient(occupant)}
               style={{
                 ...styles.roomCard,
-                background: occupant ? '#e3f2fd' : '#ffffff',
-                borderColor: occupant ? '#90caf9' : '#ddd',
+                background: cardBg,
+                borderColor: cardBorder,
                 cursor: occupant ? 'pointer' : 'default'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <strong style={{ fontSize: '12px' }}>{room}</strong>
-                <span style={{ fontSize: '10px', padding: '2px 4px', borderRadius: '4px', background: occupant ? '#bbdefb' : '#f1f3f5', color: occupant ? '#0d47a1' : '#6c757d' }}>
-                  {occupant ? 'Occ' : 'Vac'}
+                <span style={{ fontSize: '10px', padding: '2px 4px', borderRadius: '4px', background: badgeBg, color: badgeColor }}>
+                  {occupant ? `Day ${calculateHospitalDay(occupant.admissionDate)}` : 'Vacant'}
                 </span>
               </div>
               <p style={{ fontSize: '12px', margin: '6px 0 0 0', color: occupant ? '#333' : '#aaa', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
