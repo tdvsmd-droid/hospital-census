@@ -41,76 +41,85 @@ export default function App() {
     setCurrentDateString(today);
   }, []);
 
-  // Helper function to calculate Hospital Day where admission date is Day 0
-  const calculateHospitalDay = (admissionDateStr) => {
-    if (!admissionDateStr) return 0;
-    
-    // Split the YYYY-MM-DD string to avoid UTC/local timezone shift bugs
-    const parts = admissionDateStr.split('-');
-    if (parts.length !== 3) return 0;
-    
-    const admissionDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-    const today = new Date();
-    
-    // Reset time portions to compare calendar days accurately
-    admissionDate.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-    
-    const diffTime = today - admissionDate;
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    
-    // Admission day is Day 0. If it's a future date, default to 0.
-    return diffDays >= 0 ? diffDays : 0;
-  };
-
-  // Sample initial data reflecting Dr. Jose P. Rizal Memorial District Hospital inpatients (Last Name, Given Name format)
-  const [patients, setPatients] = useState([
-    {
-      id: 1,
-      wardRoom: '303-1',
-      name: 'Dela Cruz, Juan',
-      ageSex: '65 / M',
-      admissionDate: '2026-08-20',
-      admittingDiagnosis: 'Community-Acquired Pneumonia, High Risk',
-      workingImpression: 'Resolving CAP, rule out secondary bacterial infection',
-      endorsement: {
-        currentCondition: 'Stable, conscious, coherent, mild productive cough.',
-        diagnostics: 'CBC pending. Chest X-ray showed clearing infiltrates.',
-        therapeutics: 'IV Levofloxacin 500mg OD, Salbutamol nebulization Q6H.',
-        remarks: 'Waiting for relative to bring PhilHealth forms.'
-      },
-      status: 'MGH',
-      isReferral: false
-    },
-    {
-      id: 2,
-      wardRoom: 'Pending Room Assignment',
-      name: 'Santos, Maria',
-      ageSex: '52 / F',
-      admissionDate: '2026-08-28',
-      admittingDiagnosis: 'Type 2 Diabetes Mellitus with DKA',
-      workingImpression: 'Type 2 Diabetes Mellitus with DKA',
-      endorsement: {
-        currentCondition: 'Newly admitted, awaiting bed allocation.',
-        diagnostics: 'Initial labs ordered.',
-        therapeutics: 'Pending initial hospital orders.',
-        remarks: 'Needs strict monitoring of capillary blood sugar every 2 hours.'
-      },
-      status: 'New Admission',
-      isReferral: false
+  // Persistent Storage: Load patients from browser memory on startup
+  const [patients, setPatients] = useState(() => {
+    const savedPatients = localStorage.getItem('jrrmdh_patients');
+    if (savedPatients) {
+      try {
+        return JSON.parse(savedPatients);
+      } catch (e) {
+        console.error("Failed to parse saved patients", e);
+      }
     }
-  ]);
+    // Default initial sample data if nothing is saved yet
+    return [
+      {
+        id: 1,
+        wardRoom: '303-1',
+        name: 'Dela Cruz, Juan',
+        ageSex: '65 / M',
+        admissionDate: '2026-08-20',
+        admittingDiagnosis: 'Community-Acquired Pneumonia, High Risk',
+        workingImpression: 'Resolving CAP, rule out secondary bacterial infection',
+        endorsement: {
+          currentCondition: 'Stable, conscious, coherent, mild productive cough.',
+          diagnostics: 'CBC pending. Chest X-ray showed clearing infiltrates.',
+          therapeutics: 'IV Levofloxacin 500mg OD, Salbutamol nebulization Q6H.',
+          remarks: 'Waiting for relative to bring PhilHealth forms.'
+        },
+        status: 'MGH',
+        isReferral: false
+      },
+      {
+        id: 2,
+        wardRoom: 'Pending Room Assignment',
+        name: 'Santos, Maria',
+        ageSex: '52 / F',
+        admissionDate: '2026-08-28',
+        admittingDiagnosis: 'Type 2 Diabetes Mellitus with DKA',
+        workingImpression: 'Type 2 Diabetes Mellitus with DKA',
+        endorsement: {
+          currentCondition: 'Newly admitted, awaiting bed allocation.',
+          diagnostics: 'Initial labs ordered.',
+          therapeutics: 'Pending initial hospital orders.',
+          remarks: 'Needs strict monitoring of capillary blood sugar every 2 hours.'
+        },
+        status: 'New Admission',
+        isReferral: false
+      }
+    ];
+  });
 
-  // Historical archive state for discharged patients (Read-Only, Last Name first format)
-  const [dischargedArchive, setDischargedArchive] = useState([
-    {
-      id: 101,
-      name: 'Reyes, Pedro',
-      ageSex: '58 / M',
-      admissionPeriod: 'August 1 - August 5, 2026',
-      finalImpression: 'Acute Gastroenteritis, resolved with oral hydration and antibiotics.'
+  // Persistent Storage: Save patients whenever the list changes
+  useEffect(() => {
+    localStorage.setItem('jrrmdh_patients', JSON.stringify(patients));
+  }, [patients]);
+
+  // Persistent Storage: Load historical archive from browser memory on startup
+  const [dischargedArchive, setDischargedArchive] = useState(() => {
+    const savedArchive = localStorage.getItem('jrrmdh_archive');
+    if (savedArchive) {
+      try {
+        return JSON.parse(savedArchive);
+      } catch (e) {
+        console.error("Failed to parse saved archive", e);
+      }
     }
-  ]);
+    return [
+      {
+        id: 101,
+        name: 'Reyes, Pedro',
+        ageSex: '58 / M',
+        admissionPeriod: 'August 1 - August 5, 2026',
+        finalImpression: 'Acute Gastroenteritis, resolved with oral hydration and antibiotics.'
+      }
+    ];
+  });
+
+  // Persistent Storage: Save archive whenever it changes
+  useEffect(() => {
+    localStorage.setItem('jrrmdh_archive', JSON.stringify(dischargedArchive));
+  }, [dischargedArchive]);
 
   const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
 
@@ -142,6 +151,23 @@ export default function App() {
     .filter(room => isReferralLocation(room));
 
   const allRooms = [...fixedRooms, ...Array.from(new Set(customReferrals))];
+
+  // Helper function to calculate Hospital Day where admission date is Day 0
+  const calculateHospitalDay = (admissionDateStr) => {
+    if (!admissionDateStr) return 0;
+    const parts = admissionDateStr.split('-');
+    if (parts.length !== 3) return 0;
+    
+    const admissionDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    const today = new Date();
+    
+    admissionDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    
+    const diffTime = today - admissionDate;
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 ? diffDays : 0;
+  };
 
   const openNewAdmissionModal = () => {
     setModalInitialRoom('Pending Room Assignment');
@@ -208,7 +234,7 @@ export default function App() {
         setDischargedArchive(prev => [archivedRecord, ...prev]);
       }
 
-      setPatients(patients.filter(p => p.id !== idOrRoom && p.wardRoom !== idOrRoom));
+      setPatients(prev => prev.filter(p => p.id !== idOrRoom && p.wardRoom !== idOrRoom));
       if (selectedPatient && (selectedPatient.id === idOrRoom || selectedPatient.wardRoom === idOrRoom)) {
         setSelectedPatient(null);
       }
@@ -312,7 +338,6 @@ export default function App() {
           <h1 style={styles.hospitalTitle}>Dr. Jose P. Rizal Memorial District Hospital</h1>
           <h2 style={styles.deptTitle}>Department of Internal Medicine &mdash; Inpatient Census</h2>
           
-          {/* Shift Details Info Box */}
           <div style={styles.splashInfoBox}>
             <div style={styles.infoRow}>
               <span style={styles.infoLabel}>📅 Date:</span>
