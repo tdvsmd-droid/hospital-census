@@ -6,7 +6,7 @@ export default function App() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Date and Internist on Duty state for the Splash screen (now persistent!)
+  // Date and Internist on Duty state for the Splash screen (persistent)
   const [currentDateString, setCurrentDateString] = useState('');
   const [internistOnDuty, setInternistOnDuty] = useState(() => {
     const savedInternist = localStorage.getItem('jrrmdh_internist');
@@ -116,10 +116,11 @@ export default function App() {
     return [
       {
         id: 101,
-        name: 'Reyes, Pedro',
+        name: 'Reyes, Pedro (Archived Individual Record)',
         ageSex: '58 / M',
         admissionPeriod: 'August 1 - August 5, 2026',
-        finalImpression: 'Acute Gastroenteritis, resolved with oral hydration and antibiotics.'
+        finalImpression: 'Acute Gastroenteritis, resolved with oral hydration and antibiotics.',
+        isSnapshot: false
       }
     ];
   });
@@ -153,7 +154,6 @@ export default function App() {
     return room !== 'Pending Room Assignment' && !fixedRooms.includes(room);
   };
 
-  // Dynamically extract any referral rooms/locations from current patients so they appear in the grid overview
   const customReferrals = patients
     .map(p => p.wardRoom)
     .filter(room => isReferralLocation(room));
@@ -175,6 +175,35 @@ export default function App() {
     const diffTime = today - admissionDate;
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     return diffDays >= 0 ? diffDays : 0;
+  };
+
+  // Endorsement Shift Snapshot Handler
+  const handlePerformEndorsement = () => {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+
+    const options = { month: 'long', day: 'numeric', year: 'numeric' };
+    const startDateFormatted = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+    const endDateFormatted = tomorrow.toLocaleDateString('en-US', options);
+    const dutyPeriodSpan = `${startDateFormatted} - ${endDateFormatted}`;
+
+    const confirmMsg = `Perform noon endorsement snapshot for duty span [ ${dutyPeriodSpan} ]?\n\nThis will capture all ${patients.length} current patient records into the historical archive with their room arrangements, and prepare the census for the incoming shift.`;
+    
+    if (window.confirm(confirmMsg)) {
+      const snapshotRecord = {
+        id: Date.now(),
+        name: `Duty Shift Snapshot (${internistOnDuty})`,
+        ageSex: `${patients.length} Inpatients`,
+        admissionPeriod: dutyPeriodSpan,
+        finalImpression: `Endorsed by ${internistOnDuty}. Total active census: ${patients.length} patients.`,
+        isSnapshot: true,
+        snapshotPatients: [...patients]
+      };
+
+      setDischargedArchive(prev => [snapshotRecord, ...prev]);
+      alert(`Endorsement snapshot for ${dutyPeriodSpan} successfully saved to archives!`);
+    }
   };
 
   const openNewAdmissionModal = () => {
@@ -227,7 +256,7 @@ export default function App() {
   const handleClearRoom = (idOrRoom, e) => {
     if (e) e.stopPropagation();
     
-    if (window.confirm("Clear this room and archive patient record? This will mark the bed as vacant.")) {
+    if (window.confirm("Clear this room and archive individual patient record?")) {
       const patientToArchive = patients.find(p => p.id === idOrRoom || p.wardRoom === idOrRoom);
       
       if (patientToArchive) {
@@ -237,7 +266,8 @@ export default function App() {
           name: patientToArchive.name,
           ageSex: patientToArchive.ageSex,
           admissionPeriod: `${patientToArchive.admissionDate} - ${todayStr}`,
-          finalImpression: patientToArchive.workingImpression || patientToArchive.admittingDiagnosis
+          finalImpression: patientToArchive.workingImpression || patientToArchive.admittingDiagnosis,
+          isSnapshot: false
         };
         setDischargedArchive(prev => [archivedRecord, ...prev]);
       }
@@ -338,7 +368,7 @@ export default function App() {
     record.admissionPeriod.toLowerCase().includes(archiveSearchQuery.toLowerCase())
   );
 
-  // 1. Welcome Splash View with Date and Internists on Duty
+  // 1. Welcome Splash View
   if (currentView === 'splash') {
     return (
       <div style={styles.splashContainer}>
@@ -406,7 +436,7 @@ export default function App() {
               style={styles.archiveNavButton} 
               onClick={() => setCurrentView('archive')}
             >
-              View Historical Archive (Past Admissions)
+              View Historical Archive (Snapshots & Discharges)
             </button>
           </div>
         </div>
@@ -414,14 +444,14 @@ export default function App() {
     );
   }
 
-  // 4. Historical Archive View
+  // 4. Historical Archive View with Detailed Snapshot Inspection
   if (currentView === 'archive') {
     const isSearching = archiveSearchQuery.trim() !== '';
 
     return (
       <div style={styles.container}>
         <div style={styles.headerRow}>
-          <h2>Historical Admission Archive</h2>
+          <h2>Historical Archive & Duty Snapshots</h2>
           <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>
             Home Splash
           </button>
@@ -430,7 +460,7 @@ export default function App() {
         <div style={{ position: 'relative', width: '100%', marginBottom: '10px' }}>
           <input 
             type="text" 
-            placeholder="Type patient name (Last Name, Given Name), diagnosis, or period..." 
+            placeholder="Search archive by duty period, snapshot title, or diagnosis..." 
             value={archiveSearchQuery}
             onChange={(e) => setArchiveSearchQuery(e.target.value)}
             style={{ ...styles.searchBar, marginBottom: 0, paddingRight: archiveSearchQuery ? '35px' : '12px' }}
@@ -440,19 +470,9 @@ export default function App() {
             <button 
               onClick={() => setArchiveSearchQuery('')}
               style={{
-                position: 'absolute',
-                right: '10px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'none',
-                border: 'none',
-                fontSize: '18px',
-                fontWeight: 'bold',
-                color: '#666',
-                cursor: 'pointer',
-                padding: '0 5px'
+                position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+                background: 'none', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#666', cursor: 'pointer'
               }}
-              title="Clear search"
             >
               &times;
             </button>
@@ -461,42 +481,66 @@ export default function App() {
 
         <p style={styles.subText}>
           {!isSearching 
-            ? "Type in the search bar above to look up past discharged admissions." 
-            : `Found ${filteredArchive.length} matching historical record(s):`}
+            ? "Showing all saved duty-shift snapshots and individual patient archives." 
+            : `Found ${filteredArchive.length} matching archive record(s):`}
         </p>
 
-        {isSearching && (
-          <div style={styles.archiveTableContainer}>
-            <table style={styles.archiveTable}>
-              <thead>
-                <tr style={styles.tableHeaderRow}>
-                  <th style={styles.th}>Patient Name (Last, First)</th>
-                  <th style={styles.th}>Age / Sex</th>
-                  <th style={styles.th}>Admission Period</th>
-                  <th style={styles.th}>Final Working Impression</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredArchive.length === 0 ? (
-                  <tr>
-                    <td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-                      No matching historical records found.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredArchive.map(record => (
-                    <tr key={record.id} style={styles.tableRow}>
-                      <td style={styles.td}><strong>{record.name}</strong></td>
-                      <td style={styles.td}>{record.ageSex}</td>
-                      <td style={styles.td}><span style={styles.periodBadge}>{record.admissionPeriod}</span></td>
-                      <td style={styles.td}>{record.finalImpression}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <div style={styles.listContainer}>
+          {filteredArchive.length === 0 ? (
+            <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '8px' }}>No matching archive records found.</p>
+          ) : (
+            filteredArchive.map(record => (
+              <div key={record.id} style={{ ...styles.patientRow, borderLeftColor: record.isSnapshot ? '#28a745' : '#6c757d', display: 'block' }}>
+                <div style={{ width: '100%' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h4 style={{ margin: '0 0 4px 0', color: record.isSnapshot ? '#28a745' : '#0056b3' }}>
+                      {record.isSnapshot ? `📌 ${record.name}` : record.name}
+                    </h4>
+                    <span style={styles.periodBadge}>{record.admissionPeriod}</span>
+                  </div>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#555' }}>{record.finalImpression}</p>
+
+                  {/* If this record is a duty snapshot, render its embedded patient table! */}
+                  {record.isSnapshot && record.snapshotPatients && (
+                    <div style={{ marginTop: '12px', overflowX: 'auto', border: '1px solid #ddd', borderRadius: '6px', background: '#fafafa', padding: '8px' }}>
+                      <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#333', margin: '0 0 6px 0' }}>Endorsed Census Snapshot Table ({record.snapshotPatients.length} patients):</p>
+                      <table style={styles.archiveTable}>
+                        <thead>
+                          <tr style={styles.tableHeaderRow}>
+                            <th style={styles.th}>Room</th>
+                            <th style={styles.th}>Patient Name</th>
+                            <th style={styles.th}>Age/Sex</th>
+                            <th style={styles.th}>Diagnosis</th>
+                            <th style={styles.th}>Status</th>
+                            <th style={styles.th}>Endorsement Summary</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {record.snapshotPatients.map(sp => (
+                            <tr key={sp.id} style={styles.tableRow}>
+                              <td style={styles.td}><strong>{sp.wardRoom}</strong></td>
+                              <td style={styles.td}>{sp.name}</td>
+                              <td style={styles.td}>{sp.ageSex}</td>
+                              <td style={styles.td}>{sp.admittingDiagnosis}</td>
+                              <td style={styles.td}><span style={styles.statusBadge(sp.status)}>{sp.status}</span></td>
+                              <td style={styles.td}>
+                                <div style={{ fontSize: '12px' }}>
+                                  <strong>Cond:</strong> {sp.endorsement?.currentCondition}<br/>
+                                  <strong>Labs:</strong> {sp.endorsement?.diagnostics}<br/>
+                                  <strong>Meds:</strong> {sp.endorsement?.therapeutics}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
 
         <div style={{ marginTop: '25px' }}>
           <button style={styles.backButton} onClick={() => setCurrentView('census')}>
@@ -621,7 +665,7 @@ export default function App() {
               </div>
 
               <div style={{ marginBottom: '15px' }}>
-                <label style={styles.label}>Endorsement: Remarks / Notes (Include DNI/DNR notes here)</label>
+                <label style={styles.label}>Endorsement: Remarks / Notes</label>
                 <textarea 
                   rows="2" 
                   value={clinicalForm.remarks} 
@@ -705,19 +749,8 @@ export default function App() {
                 )}
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-                  <button 
-                    type="button" 
-                    onClick={() => setIsTransferModalOpen(false)} 
-                    style={styles.cancelBtn}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    style={styles.saveClinicalBtn}
-                  >
-                    Confirm Location
-                  </button>
+                  <button type="button" onClick={() => setIsTransferModalOpen(false)} style={styles.cancelBtn}>Cancel</button>
+                  <button type="submit" style={styles.saveClinicalBtn}>Confirm Location</button>
                 </div>
               </form>
             </div>
@@ -727,23 +760,26 @@ export default function App() {
     );
   }
 
-  // 2. Main Scrollable Census List & Room Grid Overview
+  // 2. Main Census List & Room Grid Overview
   return (
     <div style={styles.container}>
       <div style={styles.headerRow}>
         <h2>Internists on Duty: <span style={{ color: '#0056b3' }}>{internistOnDuty}</span></h2>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button style={styles.endorseButton} onClick={handlePerformEndorsement} title="Snapshot current census and archive duty span">
+            📋 Endorse Shift
+          </button>
           <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>
-            + Admit New Patient
+            + Admit
           </button>
           <button style={styles.referralButton} onClick={openAddReferralModal}>
-            + Add Referral
+            + Referral
           </button>
           <button style={styles.archiveNavBtnHeader} onClick={() => setCurrentView('archive')}>
-            📚 Archive ({dischargedArchive.length})
+            📚 Archive
           </button>
           <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>
-            Home Splash
+            Home
           </button>
         </div>
       </div>
@@ -760,19 +796,9 @@ export default function App() {
           <button 
             onClick={() => setSearchQuery('')}
             style={{
-              position: 'absolute',
-              right: '10px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              background: 'none',
-              border: 'none',
-              fontSize: '18px',
-              fontWeight: 'bold',
-              color: '#666',
-              cursor: 'pointer',
-              padding: '0 5px'
+              position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+              background: 'none', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#666', cursor: 'pointer'
             }}
-            title="Clear search"
           >
             &times;
           </button>
@@ -792,25 +818,13 @@ export default function App() {
           if (occupant) {
             const hDay = calculateHospitalDay(occupant.admissionDate);
             if (hDay <= 1) {
-              cardBg = '#e3f2fd'; // Light blue
-              cardBorder = '#90caf9';
-              badgeBg = '#bbdefb';
-              badgeColor = '#0d47a1';
+              cardBg = '#e3f2fd'; cardBorder = '#90caf9'; badgeBg = '#bbdefb'; badgeColor = '#0d47a1';
             } else if (hDay >= 2 && hDay <= 7) {
-              cardBg = '#e8f5e9'; // Light green
-              cardBorder = '#a5d6a7';
-              badgeBg = '#c8e6c9';
-              badgeColor = '#1b5e20';
+              cardBg = '#e8f5e9'; cardBorder = '#a5d6a7'; badgeBg = '#c8e6c9'; badgeColor = '#1b5e20';
             } else if (hDay >= 8 && hDay <= 14) {
-              cardBg = '#fff3e0'; // Light orange
-              cardBorder = '#ffcc80';
-              badgeBg = '#ffe0b2';
-              badgeColor = '#e65100';
+              cardBg = '#fff3e0'; cardBorder = '#ffcc80'; badgeBg = '#ffe0b2'; badgeColor = '#e65100';
             } else {
-              cardBg = '#ffebee'; // Light red
-              cardBorder = '#ef9a9a';
-              badgeBg = '#ffcdd2';
-              badgeColor = '#b71c1c';
+              cardBg = '#ffebee'; cardBorder = '#ef9a9a'; badgeBg = '#ffcdd2'; badgeColor = '#b71c1c';
             }
           }
 
@@ -839,7 +853,7 @@ export default function App() {
         })}
       </div>
 
-      {/* SECTION 1: IM Patients (Admissions & Unassigned Beds) */}
+      {/* SECTION 1: IM Patients */}
       <h3 style={{ fontSize: '16px', color: '#003d82', marginTop: '25px', marginBottom: '10px' }}>
         IM Inpatients & Unassigned Admissions ({imPatientsList.length})
       </h3>
@@ -848,31 +862,21 @@ export default function App() {
           <p style={{ textAlign: 'center', padding: '15px', color: '#666', background: '#fff', borderRadius: '8px' }}>No IM inpatients found.</p>
         ) : (
           imPatientsList.map(patient => (
-            <div 
-              key={patient.id} 
-              style={styles.patientRow} 
-              onClick={() => setSelectedPatient(patient)}
-            >
+            <div key={patient.id} style={styles.patientRow} onClick={() => setSelectedPatient(patient)}>
               <div>
                 <h4 style={{ margin: '0 0 5px 0', color: '#0056b3' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
                 <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>{patient.admittingDiagnosis} (Day {calculateHospitalDay(patient.admissionDate)})</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                 <span style={styles.statusBadge(patient.status)}>{patient.status}</span>
-                <button 
-                  style={styles.smallClearBtn} 
-                  onClick={(e) => handleClearRoom(patient.id, e)}
-                  title="Clear Room and Archive Record"
-                >
-                  Clear Room
-                </button>
+                <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
               </div>
             </div>
           ))
         )}
       </div>
 
-      {/* SECTION 2: Referrals from Other Departments */}
+      {/* SECTION 2: Referrals */}
       <h3 style={{ fontSize: '16px', color: '#28a745', marginTop: '25px', marginBottom: '10px' }}>
         External Department Referrals ({referralPatientsList.length})
       </h3>
@@ -881,24 +885,14 @@ export default function App() {
           <p style={{ textAlign: 'center', padding: '15px', color: '#666', background: '#fff', borderRadius: '8px' }}>No active referrals.</p>
         ) : (
           referralPatientsList.map(patient => (
-            <div 
-              key={patient.id} 
-              style={{ ...styles.patientRow, borderLeftColor: '#28a745' }} 
-              onClick={() => setSelectedPatient(patient)}
-            >
+            <div key={patient.id} style={{ ...styles.patientRow, borderLeftColor: '#28a745' }} onClick={() => setSelectedPatient(patient)}>
               <div>
                 <h4 style={{ margin: '0 0 5px 0', color: '#28a745' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
                 <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>{patient.admittingDiagnosis}</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                 <span style={styles.statusBadge(patient.status)}>{patient.status}</span>
-                <button 
-                  style={styles.smallClearBtn} 
-                  onClick={(e) => handleClearRoom(patient.id, e)}
-                  title="Clear Record and Archive"
-                >
-                  Clear Record
-                </button>
+                <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
               </div>
             </div>
           ))
@@ -940,12 +934,13 @@ const styles = {
   badgeArchive: { background: '#fff3cd', color: '#856404', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold' },
   enterButton: { background: '#0056b3', color: 'white', border: 'none', padding: '12px 20px', fontSize: '15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   archiveNavButton: { background: '#6c757d', color: 'white', border: 'none', padding: '12px 20px', fontSize: '15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
+  endorseButton: { background: '#28a745', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   admitNewButton: { background: '#007bff', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   archiveNavBtnHeader: { background: '#ffc107', color: '#333', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   container: { maxWidth: '900px', margin: '40px auto', padding: '20px', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif' },
   headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' },
   homeButton: { background: '#f0f0f0', border: '1px solid #ccc', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' },
-  referralButton: { background: '#28a745', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
+  referralButton: { background: '#17a2b8', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   transferButton: { background: '#ffc107', color: '#333', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' },
   editButton: { background: '#17a2b8', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' },
   searchBar: { width: '100%', padding: '12px', fontSize: '15px', border: '1px solid #ccc', borderRadius: '6px', marginBottom: '10px', boxSizing: 'border-box' },
@@ -954,11 +949,10 @@ const styles = {
   roomCard: { padding: '8px', borderRadius: '6px', border: '1px solid', transition: 'all 0.2s ease' },
   listContainer: { display: 'flex', flexDirection: 'column', gap: '12px' },
   patientRow: { background: 'white', padding: '16px 20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderLeft: '5px solid #0056b3' },
-  archiveTableContainer: { maxHeight: '450px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '8px', background: 'white', boxShadow: '0 2px 6px rgba(0,0,0,0.05)' },
-  archiveTable: { width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' },
-  tableHeaderRow: { background: '#f1f3f5', color: '#333', position: 'sticky', top: 0, zIndex: 1 },
-  th: { padding: '12px 15px', borderBottom: '2px solid #ddd', fontWeight: 'bold' },
-  td: { padding: '12px 15px', borderBottom: '1px solid #eee', color: '#444' },
+  archiveTable: { width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', marginTop: '6px' },
+  tableHeaderRow: { background: '#e9ecef', color: '#333' },
+  th: { padding: '8px 10px', borderBottom: '2px solid #ddd', fontWeight: 'bold' },
+  td: { padding: '8px 10px', borderBottom: '1px solid #eee', color: '#444' },
   tableRow: { transition: 'background 0.2s ease' },
   periodBadge: { background: '#e2e3e5', color: '#383d41', padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' },
   detailCard: { background: 'white', padding: '30px', borderRadius: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' },

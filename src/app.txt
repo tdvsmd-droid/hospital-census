@@ -6,11 +6,19 @@ export default function App() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Date and Internist on Duty state for the Splash screen
+  // Date and Internist on Duty state for the Splash screen (now persistent!)
   const [currentDateString, setCurrentDateString] = useState('');
-  const [internistOnDuty, setInternistOnDuty] = useState('Dr. Maria Santos');
+  const [internistOnDuty, setInternistOnDuty] = useState(() => {
+    const savedInternist = localStorage.getItem('jrrmdh_internist');
+    return savedInternist ? savedInternist : 'Dr. Maria Santos';
+  });
   const [isEditingInternist, setIsEditingInternist] = useState(false);
   const [tempInternist, setTempInternist] = useState('');
+
+  // Save Internist on Duty to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('jrrmdh_internist', internistOnDuty);
+  }, [internistOnDuty]);
 
   // Modal states for admissions/referrals
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -30,6 +38,7 @@ export default function App() {
     currentCondition: '',
     diagnostics: '',
     therapeutics: '',
+    remarks: '',
     status: 'Stable'
   });
 
@@ -40,69 +49,85 @@ export default function App() {
     setCurrentDateString(today);
   }, []);
 
-  // Helper function to automatically calculate Hospital Day based on admission date
-  const calculateHospitalDay = (admissionDateStr) => {
-    if (!admissionDateStr) return 1;
-    const admissionDate = new Date(admissionDateStr);
-    const today = new Date();
-    
-    // Reset time portions to compare calendar days accurately
-    admissionDate.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-    
-    const diffTime = today - admissionDate;
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    
-    // Day 1 is the day of admission, so we add 1. If it's a future or same-day date, default to at least 1.
-    return diffDays >= 0 ? diffDays + 1 : 1;
-  };
-
-  // Sample initial data reflecting Dr. Jose P. Rizal Memorial District Hospital inpatients (Last Name, Given Name format)
-  const [patients, setPatients] = useState([
-    {
-      id: 1,
-      wardRoom: '303-1',
-      name: 'Dela Cruz, Juan',
-      ageSex: '65 / M',
-      admissionDate: '2026-08-20',
-      admittingDiagnosis: 'Community-Acquired Pneumonia, High Risk',
-      workingImpression: 'Resolving CAP, rule out secondary bacterial infection',
-      endorsement: {
-        currentCondition: 'Stable, conscious, coherent, mild productive cough.',
-        diagnostics: 'CBC pending. Chest X-ray showed clearing infiltrates.',
-        therapeutics: 'IV Levofloxacin 500mg OD, Salbutamol nebulization Q6H.'
-      },
-      status: 'MGH',
-      isReferral: false
-    },
-    {
-      id: 2,
-      wardRoom: 'Pending Room Assignment',
-      name: 'Santos, Maria',
-      ageSex: '52 / F',
-      admissionDate: '2026-08-28',
-      admittingDiagnosis: 'Type 2 Diabetes Mellitus with DKA',
-      workingImpression: 'Type 2 Diabetes Mellitus with DKA',
-      endorsement: {
-        currentCondition: 'Newly admitted, awaiting bed allocation.',
-        diagnostics: 'Initial labs ordered.',
-        therapeutics: 'Pending initial hospital orders.'
-      },
-      status: 'New Admission',
-      isReferral: false
+  // Persistent Storage: Load patients from browser memory on startup
+  const [patients, setPatients] = useState(() => {
+    const savedPatients = localStorage.getItem('jrrmdh_patients');
+    if (savedPatients) {
+      try {
+        return JSON.parse(savedPatients);
+      } catch (e) {
+        console.error("Failed to parse saved patients", e);
+      }
     }
-  ]);
+    // Default initial sample data if nothing is saved yet
+    return [
+      {
+        id: 1,
+        wardRoom: '303-1',
+        name: 'Dela Cruz, Juan',
+        ageSex: '65 / M',
+        admissionDate: '2026-08-20',
+        admittingDiagnosis: 'Community-Acquired Pneumonia, High Risk',
+        workingImpression: 'Resolving CAP, rule out secondary bacterial infection',
+        endorsement: {
+          currentCondition: 'Stable, conscious, coherent, mild productive cough.',
+          diagnostics: 'CBC pending. Chest X-ray showed clearing infiltrates.',
+          therapeutics: 'IV Levofloxacin 500mg OD, Salbutamol nebulization Q6H.',
+          remarks: 'Waiting for relative to bring PhilHealth forms.'
+        },
+        status: 'MGH',
+        isReferral: false
+      },
+      {
+        id: 2,
+        wardRoom: 'Pending Room Assignment',
+        name: 'Santos, Maria',
+        ageSex: '52 / F',
+        admissionDate: '2026-08-28',
+        admittingDiagnosis: 'Type 2 Diabetes Mellitus with DKA',
+        workingImpression: 'Type 2 Diabetes Mellitus with DKA',
+        endorsement: {
+          currentCondition: 'Newly admitted, awaiting bed allocation.',
+          diagnostics: 'Initial labs ordered.',
+          therapeutics: 'Pending initial hospital orders.',
+          remarks: 'Needs strict monitoring of capillary blood sugar every 2 hours.'
+        },
+        status: 'New Admission',
+        isReferral: false
+      }
+    ];
+  });
 
-  // Historical archive state for discharged patients (Read-Only, Last Name first format)
-  const [dischargedArchive, setDischargedArchive] = useState([
-    {
-      id: 101,
-      name: 'Reyes, Pedro',
-      ageSex: '58 / M',
-      admissionPeriod: 'August 1 - August 5, 2026',
-      finalImpression: 'Acute Gastroenteritis, resolved with oral hydration and antibiotics.'
+  // Persistent Storage: Save patients whenever the list changes
+  useEffect(() => {
+    localStorage.setItem('jrrmdh_patients', JSON.stringify(patients));
+  }, [patients]);
+
+  // Persistent Storage: Load historical archive from browser memory on startup
+  const [dischargedArchive, setDischargedArchive] = useState(() => {
+    const savedArchive = localStorage.getItem('jrrmdh_archive');
+    if (savedArchive) {
+      try {
+        return JSON.parse(savedArchive);
+      } catch (e) {
+        console.error("Failed to parse saved archive", e);
+      }
     }
-  ]);
+    return [
+      {
+        id: 101,
+        name: 'Reyes, Pedro',
+        ageSex: '58 / M',
+        admissionPeriod: 'August 1 - August 5, 2026',
+        finalImpression: 'Acute Gastroenteritis, resolved with oral hydration and antibiotics.'
+      }
+    ];
+  });
+
+  // Persistent Storage: Save archive whenever it changes
+  useEffect(() => {
+    localStorage.setItem('jrrmdh_archive', JSON.stringify(dischargedArchive));
+  }, [dischargedArchive]);
 
   const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
 
@@ -134,6 +159,23 @@ export default function App() {
     .filter(room => isReferralLocation(room));
 
   const allRooms = [...fixedRooms, ...Array.from(new Set(customReferrals))];
+
+  // Helper function to calculate Hospital Day where admission date is Day 0
+  const calculateHospitalDay = (admissionDateStr) => {
+    if (!admissionDateStr) return 0;
+    const parts = admissionDateStr.split('-');
+    if (parts.length !== 3) return 0;
+    
+    const admissionDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    const today = new Date();
+    
+    admissionDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    
+    const diffTime = today - admissionDate;
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 ? diffDays : 0;
+  };
 
   const openNewAdmissionModal = () => {
     setModalInitialRoom('Pending Room Assignment');
@@ -200,7 +242,7 @@ export default function App() {
         setDischargedArchive(prev => [archivedRecord, ...prev]);
       }
 
-      setPatients(patients.filter(p => p.id !== idOrRoom && p.wardRoom !== idOrRoom));
+      setPatients(prev => prev.filter(p => p.id !== idOrRoom && p.wardRoom !== idOrRoom));
       if (selectedPatient && (selectedPatient.id === idOrRoom || selectedPatient.wardRoom === idOrRoom)) {
         setSelectedPatient(null);
       }
@@ -232,7 +274,8 @@ export default function App() {
       endorsement: {
         currentCondition: formData.currentCondition || (isReferralSave ? 'Newly referred patient.' : 'Newly admitted, stable.'),
         diagnostics: formData.diagnostics || 'Pending labs.',
-        therapeutics: formData.therapeutics || 'As per initial orders.'
+        therapeutics: formData.therapeutics || 'As per initial orders.',
+        remarks: formData.remarks || ''
       },
       status: assignedStatus,
       physician: formData.physician,
@@ -250,6 +293,7 @@ export default function App() {
       currentCondition: patient.endorsement?.currentCondition || '',
       diagnostics: patient.endorsement?.diagnostics || '',
       therapeutics: patient.endorsement?.therapeutics || '',
+      remarks: patient.endorsement?.remarks || '',
       status: patient.status || 'Stable'
     });
     setIsEditingClinical(true);
@@ -267,7 +311,8 @@ export default function App() {
           endorsement: {
             currentCondition: clinicalForm.currentCondition,
             diagnostics: clinicalForm.diagnostics,
-            therapeutics: clinicalForm.therapeutics
+            therapeutics: clinicalForm.therapeutics,
+            remarks: clinicalForm.remarks
           }
         };
         setSelectedPatient(updated);
@@ -301,7 +346,6 @@ export default function App() {
           <h1 style={styles.hospitalTitle}>Dr. Jose P. Rizal Memorial District Hospital</h1>
           <h2 style={styles.deptTitle}>Department of Internal Medicine &mdash; Inpatient Census</h2>
           
-          {/* Shift Details Info Box */}
           <div style={styles.splashInfoBox}>
             <div style={styles.infoRow}>
               <span style={styles.infoLabel}>📅 Date:</span>
@@ -383,14 +427,37 @@ export default function App() {
           </button>
         </div>
 
-        <input 
-          type="text" 
-          placeholder="Type patient name (Last Name, Given Name), diagnosis, or period..." 
-          value={archiveSearchQuery}
-          onChange={(e) => setArchiveSearchQuery(e.target.value)}
-          style={styles.searchBar}
-          autoFocus
-        />
+        <div style={{ position: 'relative', width: '100%', marginBottom: '10px' }}>
+          <input 
+            type="text" 
+            placeholder="Type patient name (Last Name, Given Name), diagnosis, or period..." 
+            value={archiveSearchQuery}
+            onChange={(e) => setArchiveSearchQuery(e.target.value)}
+            style={{ ...styles.searchBar, marginBottom: 0, paddingRight: archiveSearchQuery ? '35px' : '12px' }}
+            autoFocus
+          />
+          {archiveSearchQuery && (
+            <button 
+              onClick={() => setArchiveSearchQuery('')}
+              style={{
+                position: 'absolute',
+                right: '10px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                fontSize: '18px',
+                fontWeight: 'bold',
+                color: '#666',
+                cursor: 'pointer',
+                padding: '0 5px'
+              }}
+              title="Clear search"
+            >
+              &times;
+            </button>
+          )}
+        </div>
 
         <p style={styles.subText}>
           {!isSearching 
@@ -543,12 +610,22 @@ export default function App() {
                 />
               </div>
 
-              <div style={{ marginBottom: '15px' }}>
+              <div style={{ marginBottom: '12px' }}>
                 <label style={styles.label}>Endorsement: Therapeutics / Medications</label>
                 <textarea 
                   rows="2" 
                   value={clinicalForm.therapeutics} 
                   onChange={(e) => setClinicalForm({...clinicalForm, therapeutics: e.target.value})}
+                  style={styles.textarea}
+                />
+              </div>
+
+              <div style={{ marginBottom: '15px' }}>
+                <label style={styles.label}>Endorsement: Remarks / Notes (Include DNI/DNR notes here)</label>
+                <textarea 
+                  rows="2" 
+                  value={clinicalForm.remarks} 
+                  onChange={(e) => setClinicalForm({...clinicalForm, remarks: e.target.value})}
                   style={styles.textarea}
                 />
               </div>
@@ -569,6 +646,9 @@ export default function App() {
                 <p><strong>Current Condition:</strong> {selectedPatient.endorsement?.currentCondition}</p>
                 <p><strong>Diagnostics:</strong> {selectedPatient.endorsement?.diagnostics}</p>
                 <p><strong>Therapeutics:</strong> {selectedPatient.endorsement?.therapeutics}</p>
+                {selectedPatient.endorsement?.remarks && (
+                  <p><strong>Remarks:</strong> {selectedPatient.endorsement?.remarks}</p>
+                )}
               </div>
 
               <p><strong>Status / Disposition:</strong> <span style={styles.statusBadge(selectedPatient.status)}>{selectedPatient.status}</span></p>
@@ -651,7 +731,7 @@ export default function App() {
   return (
     <div style={styles.container}>
       <div style={styles.headerRow}>
-        <h2>Internists on Duty</h2>
+        <h2>Internists on Duty: <span style={{ color: '#0056b3' }}>{internistOnDuty}</span></h2>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>
             + Admit New Patient
@@ -668,33 +748,87 @@ export default function App() {
         </div>
       </div>
 
-      <input 
-        type="text" 
-        placeholder="Search active inpatients by name (Last, First), room, or diagnosis..." 
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        style={styles.searchBar}
-      />
+      <div style={{ position: 'relative', width: '100%', marginBottom: '10px' }}>
+        <input 
+          type="text" 
+          placeholder="Search active inpatients by name (Last, First), room, or diagnosis..." 
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ ...styles.searchBar, marginBottom: 0, paddingRight: searchQuery ? '35px' : '12px' }}
+        />
+        {searchQuery && (
+          <button 
+            onClick={() => setSearchQuery('')}
+            style={{
+              position: 'absolute',
+              right: '10px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'none',
+              border: 'none',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              color: '#666',
+              cursor: 'pointer',
+              padding: '0 5px'
+            }}
+            title="Clear search"
+          >
+            &times;
+          </button>
+        )}
+      </div>
 
       <h3 style={{ fontSize: '16px', color: '#444', marginTop: '20px' }}>Ward, Room & ICU Status (Bed Management Overview)</h3>
       <div style={styles.roomGrid}>
         {allRooms.map(room => {
           const occupant = patients.find(p => p.wardRoom === room);
+          
+          let cardBg = '#ffffff';
+          let cardBorder = '#ddd';
+          let badgeBg = '#f1f3f5';
+          let badgeColor = '#6c757d';
+
+          if (occupant) {
+            const hDay = calculateHospitalDay(occupant.admissionDate);
+            if (hDay <= 1) {
+              cardBg = '#e3f2fd'; // Light blue
+              cardBorder = '#90caf9';
+              badgeBg = '#bbdefb';
+              badgeColor = '#0d47a1';
+            } else if (hDay >= 2 && hDay <= 7) {
+              cardBg = '#e8f5e9'; // Light green
+              cardBorder = '#a5d6a7';
+              badgeBg = '#c8e6c9';
+              badgeColor = '#1b5e20';
+            } else if (hDay >= 8 && hDay <= 14) {
+              cardBg = '#fff3e0'; // Light orange
+              cardBorder = '#ffcc80';
+              badgeBg = '#ffe0b2';
+              badgeColor = '#e65100';
+            } else {
+              cardBg = '#ffebee'; // Light red
+              cardBorder = '#ef9a9a';
+              badgeBg = '#ffcdd2';
+              badgeColor = '#b71c1c';
+            }
+          }
+
           return (
             <div 
               key={room}
               onClick={() => occupant && setSelectedPatient(occupant)}
               style={{
                 ...styles.roomCard,
-                background: occupant ? '#e3f2fd' : '#ffffff',
-                borderColor: occupant ? '#90caf9' : '#ddd',
+                background: cardBg,
+                borderColor: cardBorder,
                 cursor: occupant ? 'pointer' : 'default'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <strong style={{ fontSize: '12px' }}>{room}</strong>
-                <span style={{ fontSize: '10px', padding: '2px 4px', borderRadius: '4px', background: occupant ? '#bbdefb' : '#f1f3f5', color: occupant ? '#0d47a1' : '#6c757d' }}>
-                  {occupant ? 'Occ' : 'Vac'}
+                <span style={{ fontSize: '10px', padding: '2px 4px', borderRadius: '4px', background: badgeBg, color: badgeColor }}>
+                  {occupant ? `Day ${calculateHospitalDay(occupant.admissionDate)}` : 'Vacant'}
                 </span>
               </div>
               <p style={{ fontSize: '12px', margin: '6px 0 0 0', color: occupant ? '#333' : '#aaa', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
