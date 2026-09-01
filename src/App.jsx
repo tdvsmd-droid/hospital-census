@@ -419,14 +419,37 @@ export default function App() {
           </button>
         </div>
 
-        <input 
-          type="text" 
-          placeholder="Type patient name (Last Name, Given Name), diagnosis, or period..." 
-          value={archiveSearchQuery}
-          onChange={(e) => setArchiveSearchQuery(e.target.value)}
-          style={styles.searchBar}
-          autoFocus
-        />
+        <div style={{ position: 'relative', width: '100%', marginBottom: '10px' }}>
+          <input 
+            type="text" 
+            placeholder="Type patient name (Last Name, Given Name), diagnosis, or period..." 
+            value={archiveSearchQuery}
+            onChange={(e) => setArchiveSearchQuery(e.target.value)}
+            style={{ ...styles.searchBar, marginBottom: 0, paddingRight: archiveSearchQuery ? '35px' : '12px' }}
+            autoFocus
+          />
+          {archiveSearchQuery && (
+            <button 
+              onClick={() => setArchiveSearchQuery('')}
+              style={{
+                position: 'absolute',
+                right: '10px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                fontSize: '18px',
+                fontWeight: 'bold',
+                color: '#666',
+                cursor: 'pointer',
+                padding: '0 5px'
+              }}
+              title="Clear search"
+            >
+              &times;
+            </button>
+          )}
+        </div>
 
         <p style={styles.subText}>
           {!isSearching 
@@ -717,13 +740,36 @@ export default function App() {
         </div>
       </div>
 
-      <input 
-        type="text" 
-        placeholder="Search active inpatients by name (Last, First), room, or diagnosis..." 
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        style={styles.searchBar}
-      />
+      <div style={{ position: 'relative', width: '100%', marginBottom: '10px' }}>
+        <input 
+          type="text" 
+          placeholder="Search active inpatients by name (Last, First), room, or diagnosis..." 
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ ...styles.searchBar, marginBottom: 0, paddingRight: searchQuery ? '35px' : '12px' }}
+        />
+        {searchQuery && (
+          <button 
+            onClick={() => setSearchQuery('')}
+            style={{
+              position: 'absolute',
+              right: '10px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'none',
+              border: 'none',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              color: '#666',
+              cursor: 'pointer',
+              padding: '0 5px'
+            }}
+            title="Clear search"
+          >
+            &times;
+          </button>
+        )}
+      </div>
 
       <h3 style={{ fontSize: '16px', color: '#444', marginTop: '20px' }}>Ward, Room & ICU Status (Bed Management Overview)</h3>
       <div style={styles.roomGrid}>
