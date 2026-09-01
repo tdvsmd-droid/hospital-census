@@ -568,9 +568,9 @@ export default function App() {
     return (
       <div style={styles.splashContainer}>
         <div style={styles.splashCard}>
-          <div style={styles.splashHeaderTag}>JRRMDH DEPARTMENT OF INTERNAL MEDICINE</div>
-          <h1 style={styles.hospitalTitle}>Inpatient Duty Portal</h1>
-          <p style={styles.deptTitle}>High-Fidelity Census & Shift Management System</p>
+          <h1 style={styles.hospitalTitle}>Dr. Jose P. Rizal Memorial District Hospital</h1>
+          <h2 style={styles.deptTitle}>Department of Internal Medicine</h2>
+          <p style={styles.portalSubtitle}>Inpatient Duty Portal &bull; Census & Shift Management System</p>
           
           <div style={styles.splashInfoBox}>
             <div style={styles.infoRow}>
@@ -639,7 +639,6 @@ export default function App() {
   }
 
   if (currentView === 'archive') {
-    const isSearching = archiveSearchQuery.trim() !== '';
     return (
       <div style={styles.container}>
         <div style={styles.headerRow}>
@@ -1072,9 +1071,9 @@ export default function App() {
 const styles = {
   splashContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif', padding: '20px' },
   splashCard: { background: '#ffffff', padding: '40px', borderRadius: '16px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)', maxWidth: '600px', width: '100%' },
-  splashHeaderTag: { fontSize: '11px', fontWeight: '800', letterSpacing: '1.2px', color: '#0284c7', marginBottom: '8px' },
-  hospitalTitle: { color: '#1e293b', margin: '0 0 6px 0', fontSize: '26px', fontWeight: '700' },
-  deptTitle: { color: '#64748b', fontSize: '14px', fontWeight: '500', marginBottom: '24px' },
+  hospitalTitle: { color: '#1e293b', margin: '0 0 4px 0', fontSize: '22px', fontWeight: '800', letterSpacing: '-0.02em' },
+  deptTitle: { color: '#0284c7', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' },
+  portalSubtitle: { color: '#64748b', fontSize: '13px', fontWeight: '500', marginBottom: '24px' },
   splashInfoBox: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px', textAlign: 'left' },
   infoRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', fontSize: '14px' },
   infoLabel: { fontWeight: '600', color: '#334155' },

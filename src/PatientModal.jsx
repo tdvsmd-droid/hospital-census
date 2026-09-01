@@ -9,15 +9,18 @@ export default function PatientModal({ room, allRooms, patient, onClose, onSave 
     diagnosis: patient ? patient.admittingDiagnosis : '',
     physician: patient ? (patient.physician || '') : '',
     status: patient ? patient.status : 'New Admission',
+    // Endorsement fields including remarks
     currentCondition: patient ? (patient.endorsement?.currentCondition || '') : 'Stable, conscious, coherent.',
     diagnostics: patient ? (patient.endorsement?.diagnostics || '') : 'Pending baseline labs.',
     therapeutics: patient ? (patient.endorsement?.therapeutics || '') : 'As per initial hospital orders.',
     remarks: patient ? (patient.endorsement?.remarks || '') : ''
   });
 
+  // Local state for location input
   const isPendingQueue = room === 'Pending Room Assignment';
   const modalTitle = isPendingQueue ? 'Pending Room Assignment' : 'Add Referral Patient';
 
+  // For referrals, start blank. For pending room assignments, use the default string.
   const [customLocationText, setCustomLocationText] = useState(isPendingQueue ? 'Pending Room Assignment' : '');
 
   const handleSubmit = (e) => {
@@ -34,13 +37,7 @@ export default function PatientModal({ room, allRooms, patient, onClose, onSave 
   return (
     <div style={styles.modalOverlay}>
       <div style={styles.modalCard}>
-        {/* Hospital Branding Header inside the Modal */}
-        <div style={styles.headerContainer}>
-          <h1 style={styles.hospitalTitle}>Dr. Jose P. Rizal Memorial District Hospital</h1>
-          <h2 style={styles.departmentTitle}>Department of Internal Medicine</h2>
-        </div>
-
-        <h3 style={{ margin: '0 0 15px 0', color: '#0f172a', fontSize: '16px', fontWeight: '700' }}>{modalTitle}</h3>
+        <h3 style={{ margin: '0 0 15px 0', color: '#003d82' }}>{modalTitle}</h3>
         
         <form onSubmit={handleSubmit}>
           {!isPendingQueue && (
@@ -129,8 +126,8 @@ export default function PatientModal({ room, allRooms, patient, onClose, onSave 
             />
           </div>
 
-          <hr style={{ margin: '18px 0', border: '0', borderTop: '1px solid #e2e8f0' }} />
-          <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Initial Endorsement Details</h4>
+          <hr style={{ margin: '15px 0', border: '0', borderTop: '1px solid #eee' }} />
+          <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#0056b3' }}>Initial Endorsement Details</h4>
 
           <div style={{ marginBottom: '10px' }}>
             <label style={styles.label}>Current Condition</label>
@@ -162,7 +159,7 @@ export default function PatientModal({ room, allRooms, patient, onClose, onSave 
             />
           </div>
 
-          <div style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: '15px' }}>
             <label style={styles.label}>Remarks / Special Notes</label>
             <textarea 
               rows="2"
@@ -188,108 +185,12 @@ export default function PatientModal({ room, allRooms, patient, onClose, onSave 
 }
 
 const styles = {
-  headerContainer: {
-    textAlign: 'center',
-    marginBottom: '20px',
-    paddingBottom: '12px',
-    borderBottom: '2px solid #f1f5f9',
-  },
-  hospitalTitle: {
-    margin: '0 0 4px 0',
-    fontSize: '15px',
-    fontWeight: '800',
-    color: '#0f172a',
-    letterSpacing: '-0.02em',
-  },
-  departmentTitle: {
-    margin: '0',
-    fontSize: '11px',
-    fontWeight: '700',
-    color: '#0284c7',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-  },
-  modalOverlay: { 
-    position: 'fixed', 
-    top: 0, 
-    left: 0, 
-    right: 0, 
-    bottom: 0, 
-    backgroundColor: 'rgba(15, 23, 42, 0.7)', 
-    backdropFilter: 'blur(6px)', 
-    display: 'flex', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    zIndex: 1000,
-    padding: '20px'
-  },
-  modalCard: { 
-    background: '#ffffff', 
-    padding: '32px', 
-    borderRadius: '16px', 
-    width: '100%', 
-    maxWidth: '520px', 
-    maxHeight: '90vh', 
-    overflowY: 'auto', 
-    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', 
-    border: '1px solid #cbd5e1' 
-  },
-  label: { 
-    display: 'block', 
-    fontSize: '12px', 
-    fontWeight: '700', 
-    color: '#334155', 
-    marginBottom: '5px',
-    letterSpacing: '-0.01em'
-  },
-  helperText: { 
-    display: 'block', 
-    fontSize: '11px', 
-    color: '#64748b', 
-    marginTop: '3px' 
-  },
-  input: { 
-    width: '100%', 
-    padding: '10px 12px', 
-    fontSize: '14px', 
-    border: '1px solid #cbd5e1', 
-    borderRadius: '8px', 
-    boxSizing: 'border-box',
-    outline: 'none',
-    backgroundColor: '#f8fafc',
-    color: '#1e293b'
-  },
-  textarea: { 
-    width: '100%', 
-    padding: '10px 12px', 
-    fontSize: '14px', 
-    border: '1px solid #cbd5e1', 
-    borderRadius: '8px', 
-    boxSizing: 'border-box', 
-    resize: 'vertical',
-    outline: 'none',
-    backgroundColor: '#f8fafc',
-    color: '#1e293b'
-  },
-  saveBtn: { 
-    background: '#059669', 
-    color: 'white', 
-    border: 'none', 
-    padding: '10px 18px', 
-    borderRadius: '8px', 
-    cursor: 'pointer', 
-    fontWeight: '700',
-    fontSize: '14px',
-    boxShadow: '0 4px 12px rgba(5, 150, 105, 0.2)'
-  },
-  cancelBtn: { 
-    background: '#64748b', 
-    color: 'white', 
-    border: 'none', 
-    padding: '10px 18px', 
-    borderRadius: '8px', 
-    cursor: 'pointer',
-    fontWeight: '600',
-    fontSize: '14px'
-  }
+  modalOverlay: { position: 'fixed', top: 0, left: '0', right: '0', bottom: '0', backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+  modalCard: { background: 'white', padding: '25px', borderRadius: '10px', width: '100%', maxWidth: '450px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 4px 15px rgba(0,0,0,0.2)' },
+  label: { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#444', marginBottom: '4px' },
+  helperText: { display: 'block', fontSize: '11px', color: '#666', marginTop: '3px' },
+  input: { width: '100%', padding: '8px', fontSize: '14px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' },
+  textarea: { width: '100%', padding: '8px', fontSize: '14px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box', resize: 'vertical' },
+  saveBtn: { background: '#28a745', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' },
+  cancelBtn: { background: '#6c757d', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }
 };
