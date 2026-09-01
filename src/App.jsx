@@ -6,11 +6,19 @@ export default function App() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Date and Internist on Duty state for the Splash screen
+  // Date and Internist on Duty state for the Splash screen (now persistent!)
   const [currentDateString, setCurrentDateString] = useState('');
-  const [internistOnDuty, setInternistOnDuty] = useState('Dr. Maria Santos');
+  const [internistOnDuty, setInternistOnDuty] = useState(() => {
+    const savedInternist = localStorage.getItem('jrrmdh_internist');
+    return savedInternist ? savedInternist : 'Dr. Maria Santos';
+  });
   const [isEditingInternist, setIsEditingInternist] = useState(false);
   const [tempInternist, setTempInternist] = useState('');
+
+  // Save Internist on Duty to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('jrrmdh_internist', internistOnDuty);
+  }, [internistOnDuty]);
 
   // Modal states for admissions/referrals
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -723,7 +731,7 @@ export default function App() {
   return (
     <div style={styles.container}>
       <div style={styles.headerRow}>
-        <h2>Internists on Duty</h2>
+        <h2>Internists on Duty: <span style={{ color: '#0056b3' }}>{internistOnDuty}</span></h2>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>
             + Admit New Patient
