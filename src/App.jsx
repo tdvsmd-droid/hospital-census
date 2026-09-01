@@ -176,6 +176,23 @@ export default function App() {
     return diffDays >= 0 ? diffDays : 0;
   };
 
+  // Function to manually reorder patients up or down in the sequence
+  const movePatientOrder = (id, direction, e) => {
+    if (e) e.stopPropagation();
+    setPatients(prev => {
+      const index = prev.findIndex(p => p.id === id);
+      if (index === -1) return prev;
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      
+      const updated = [...prev];
+      const temp = updated[index];
+      updated[index] = updated[targetIndex];
+      updated[targetIndex] = temp;
+      return updated;
+    });
+  };
+
   // Endorsement Shift Snapshot Handler (Triggered from Splash Home Page)
   const handlePerformEndorsement = () => {
     const incomingDoctor = prompt("Enter the name of the incoming Internist on Duty for the next shift:", "Dr. ");
@@ -367,7 +384,7 @@ export default function App() {
     record.admissionPeriod.toLowerCase().includes(archiveSearchQuery.toLowerCase())
   );
 
-  // 1. Welcome Splash View (Now includes Endorse Shift button)
+  // 1. Welcome Splash View
   if (currentView === 'splash') {
     return (
       <div style={styles.splashContainer}>
@@ -450,7 +467,7 @@ export default function App() {
     );
   }
 
-  // 4. Historical Archive View with Detailed Snapshot Inspection
+  // 4. Historical Archive View
   if (currentView === 'archive') {
     const isSearching = archiveSearchQuery.trim() !== '';
 
@@ -769,7 +786,7 @@ export default function App() {
   return (
     <div style={styles.container}>
       <div style={styles.headerRow}>
-        <h2>Internists on Duty: <span style={{ color: '#0056b3' }}>{internistOnDuty}</span></h2>
+        <h2>IM on Duty: <span style={{ color: '#0056b3' }}>{internistOnDuty}</span></h2>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>
             + Admit
@@ -869,8 +886,12 @@ export default function App() {
                 <h4 style={{ margin: '0 0 5px 0', color: '#0056b3' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
                 <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>{patient.admittingDiagnosis} (Day {calculateHospitalDay(patient.admissionDate)})</p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={styles.statusBadge(patient.status)}>{patient.status}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
+                  <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+                </div>
                 <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
               </div>
             </div>
@@ -892,8 +913,12 @@ export default function App() {
                 <h4 style={{ margin: '0 0 5px 0', color: '#28a745' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
                 <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>{patient.admittingDiagnosis}</p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={styles.statusBadge(patient.status)}>{patient.status}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
+                  <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+                </div>
                 <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
               </div>
             </div>
@@ -971,6 +996,7 @@ const styles = {
   cancelBtn: { background: '#6c757d', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' },
   clearRoomButton: { background: '#dc3545', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginTop: '20px' },
   smallClearBtn: { background: '#ffcdd2', color: '#b71c1c', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
+  orderArrowBtn: { background: '#f1f3f5', border: '1px solid #ced4da', color: '#495057', width: '22px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '3px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold', padding: 0 },
   statusBadge: (status) => ({
     background: status === 'MGH' ? '#d1ecf1' : status === 'New Admission' ? '#cce5ff' : status === 'Referral' ? '#d4edda' : status === 'Improving' ? '#d4edda' : status === 'Critical' ? '#f8d7da' : '#fff3cd',
     color: status === 'MGH' ? '#0c5460' : status === 'New Admission' ? '#004085' : status === 'Referral' ? '#155724' : status === 'Improving' ? '#155724' : status === 'Critical' ? '#721c24' : '#856404',
