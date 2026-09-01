@@ -37,14 +37,9 @@ export default function App() {
   const [customTransferText, setCustomTransferText] = useState('');
   const [isCustomTransfer, setIsCustomTransfer] = useState(false);
 
-  // State for editing clinical details & endorsement (expanded to include demographics)
+  // State for editing clinical details & endorsement
   const [isEditingClinical, setIsEditingClinical] = useState(false);
   const [clinicalForm, setClinicalForm] = useState({
-    name: '',
-    age: '',
-    gender: 'Male',
-    admissionDate: '',
-    physician: '',
     admittingDiagnosis: '',
     workingImpression: '',
     currentCondition: '',
@@ -71,7 +66,6 @@ export default function App() {
         name: 'Dela Cruz, Juan',
         ageSex: '65 / M',
         admissionDate: '2026-08-20',
-        physician: '',
         admittingDiagnosis: 'Community-Acquired Pneumonia, High Risk',
         workingImpression: 'Resolving CAP, rule out secondary bacterial infection',
         endorsement: {
@@ -89,7 +83,6 @@ export default function App() {
         name: 'Santos, Maria',
         ageSex: '52 / F',
         admissionDate: '2026-08-28',
-        physician: '',
         admittingDiagnosis: 'Type 2 Diabetes Mellitus with DKA',
         workingImpression: 'Type 2 Diabetes Mellitus with DKA',
         endorsement: {
@@ -155,6 +148,7 @@ export default function App() {
     "ICU-ISO"
   ];
 
+  // Helper function to identify custom referral locations for the grid overview
   const isReferralLocation = (room) => {
     return room !== 'Pending Room Assignment' && !fixedRooms.includes(room);
   };
@@ -165,6 +159,7 @@ export default function App() {
 
   const allRooms = [...fixedRooms, ...Array.from(new Set(customReferrals))];
 
+  // Helper function to calculate Hospital Day where admission date is Day 0
   const calculateHospitalDay = (admissionDateStr) => {
     if (!admissionDateStr) return 0;
     const parts = admissionDateStr.split('-');
@@ -181,6 +176,7 @@ export default function App() {
     return diffDays >= 0 ? diffDays : 0;
   };
 
+  // Function to manually reorder patients up or down in the sequence
   const movePatientOrder = (id, direction, e) => {
     if (e) e.stopPropagation();
     setPatients(prev => {
@@ -197,9 +193,10 @@ export default function App() {
     });
   };
 
+  // Endorsement Shift Snapshot Handler (Triggered from Splash Home Page)
   const handlePerformEndorsement = () => {
     const incomingDoctor = prompt("Enter the name of the incoming Internist on Duty for the next shift:", "Dr. ");
-    if (!incomingDoctor) return;
+    if (!incomingDoctor) return; // User cancelled prompt
 
     const now = new Date();
     const tomorrow = new Date(now);
@@ -336,22 +333,7 @@ export default function App() {
   };
 
   const startEditingClinical = (patient) => {
-    // Parse existing ageSex string back into age number/string and gender for the form
-    let parsedAge = '';
-    let parsedGender = 'Male';
-    if (patient.ageSex) {
-      const parts = patient.ageSex.split('/');
-      parsedAge = parts[0] ? parts[0].trim() : '';
-      const genderLetter = parts[1] ? parts[1].trim().toUpperCase() : 'M';
-      parsedGender = genderLetter === 'F' ? 'Female' : 'Male';
-    }
-
     setClinicalForm({
-      name: patient.name || '',
-      age: parsedAge,
-      gender: parsedGender,
-      admissionDate: patient.admissionDate || '',
-      physician: patient.physician || '',
       admittingDiagnosis: patient.admittingDiagnosis || '',
       workingImpression: patient.workingImpression || '',
       currentCondition: patient.endorsement?.currentCondition || '',
@@ -365,16 +347,10 @@ export default function App() {
 
   const saveClinicalEdits = (e) => {
     e.preventDefault();
-    const updatedAgeSex = `${clinicalForm.age} / ${clinicalForm.gender[0].toUpperCase()}`;
-
     setPatients(prev => prev.map(p => {
       if (p.id === selectedPatient.id) {
         const updated = {
           ...p,
-          name: clinicalForm.name,
-          ageSex: updatedAgeSex,
-          admissionDate: clinicalForm.admissionDate,
-          physician: clinicalForm.physician,
           admittingDiagnosis: clinicalForm.admittingDiagnosis,
           workingImpression: clinicalForm.workingImpression,
           status: clinicalForm.status,
@@ -626,7 +602,7 @@ export default function App() {
                   }
                 }}
               >
-                {isEditingClinical ? 'Close Edit Form' : 'Edit Patient & Clinical Data'}
+                {isEditingClinical ? 'Close Edit Form' : 'Edit Clinical Data'}
               </button>
             </div>
           </div>
@@ -637,64 +613,8 @@ export default function App() {
 
           {isEditingClinical ? (
             <form onSubmit={saveClinicalEdits} style={styles.editFormBox}>
-              <h3 style={{ margin: '0 0 15px 0', color: '#0056b3' }}>Edit Patient Demographics & Clinical Details</h3>
+              <h3 style={{ margin: '0 0 15px 0', color: '#0056b3' }}>Update Clinical Details & Disposition</h3>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-                <div>
-                  <label style={styles.label}>Patient Name (Last, First)</label>
-                  <input 
-                    type="text" 
-                    value={clinicalForm.name} 
-                    onChange={(e) => setClinicalForm({...clinicalForm, name: e.target.value})}
-                    style={styles.input}
-                    required
-                  />
-                </div>
-                <div>
-                  <label style={styles.label}>Admission Date</label>
-                  <input 
-                    type="date" 
-                    value={clinicalForm.admissionDate} 
-                    onChange={(e) => setClinicalForm({...clinicalForm, admissionDate: e.target.value})}
-                    style={styles.input}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-                <div>
-                  <label style={styles.label}>Age</label>
-                  <input 
-                    type="text" 
-                    value={clinicalForm.age} 
-                    onChange={(e) => setClinicalForm({...clinicalForm, age: e.target.value})}
-                    style={styles.input}
-                    required
-                  />
-                </div>
-                <div>
-                  <label style={styles.label}>Gender</label>
-                  <select 
-                    value={clinicalForm.gender} 
-                    onChange={(e) => setClinicalForm({...clinicalForm, gender: e.target.value})}
-                    style={styles.input}
-                  >
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={styles.label}>Attending Physician</label>
-                  <input 
-                    type="text" 
-                    value={clinicalForm.physician} 
-                    onChange={(e) => setClinicalForm({...clinicalForm, physician: e.target.value})}
-                    style={styles.input}
-                  />
-                </div>
-              </div>
-
               <div style={{ marginBottom: '12px' }}>
                 <label style={styles.label}>Admitting Diagnosis</label>
                 <input 
