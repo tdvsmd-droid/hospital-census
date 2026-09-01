@@ -1,51 +1,238 @@
 import React, { useState, useEffect } from 'react';
-import PatientModal from './PatientModal';
 
+// --- Patient Modal Component (Self-Contained) ---
+function PatientModal({ room, allRooms, patient, onClose, onSave, onDischarge }) {
+  const [modalRoom, setModalRoom] = useState(room || 'Pending Room Assignment');
+  const [isCustomRoom, setIsCustomRoom] = useState(false);
+  const [customRoomText, setCustomRoomText] = useState('');
+
+  const [formData, setFormData] = useState({
+    name: patient ? patient.name : '',
+    age: patient ? patient.ageSex.split('/')[0].trim() : '',
+    gender: patient ? (patient.ageSex.includes('F') ? 'Female' : 'Male') : 'Male',
+    admissionDate: patient ? patient.admissionDate : new Date().toISOString().split('T')[0],
+    physician: patient ? patient.physician : '',
+    diagnosis: patient ? patient.admittingDiagnosis : '',
+    currentCondition: patient ? patient.endorsement?.currentCondition : '',
+    diagnostics: patient ? patient.endorsement?.diagnostics : '',
+    therapeutics: patient ? patient.endorsement?.therapeutics : '',
+    remarks: patient ? patient.endorsement?.remarks : '',
+    status: patient ? patient.status : (room === '' ? 'Referral' : 'New Admission')
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const finalRoom = isCustomRoom ? customRoomText.trim() : modalRoom;
+    onSave(finalRoom, formData);
+  };
+
+  return (
+    <div style={styles.modalOverlay}>
+      <div style={styles.modalCardLarge}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h3 style={{ margin: 0, color: '#1e3a8a', fontSize: '20px' }}>
+            {room === '' ? '📝 Register New Referral' : '➕ New Inpatient Admission'}
+          </h3>
+          <button onClick={onClose} style={styles.modalCloseBtn}>&times;</button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '14px' }}>
+            <div>
+              <label style={styles.label}>Patient Full Name (Last, First M.I.)</label>
+              <input 
+                type="text" 
+                placeholder="e.g., Dela Cruz, Juan A." 
+                value={formData.name} 
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                style={styles.input}
+                required
+              />
+            </div>
+            <div>
+              <label style={styles.label}>Age & Gender</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input 
+                  type="number" 
+                  placeholder="Age" 
+                  value={formData.age} 
+                  onChange={(e) => setFormData({...formData, age: e.target.value})}
+                  style={{ ...styles.input, width: '70px' }}
+                  required
+                />
+                <select 
+                  value={formData.gender} 
+                  onChange={(e) => setFormData({...formData, gender: e.target.value})}
+                  style={styles.input}
+                >
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '14px' }}>
+            <div>
+              <label style={styles.label}>Ward / Room / Bed Assignment</label>
+              <select 
+                value={isCustomRoom ? 'OTHER_ROOM' : modalRoom}
+                onChange={(e) => {
+                  if (e.target.value === 'OTHER_ROOM') {
+                    setIsCustomRoom(true);
+                  } else {
+                    setIsCustomRoom(false);
+                    setModalRoom(e.target.value);
+                  }
+                }}
+                style={styles.input}
+              >
+                <option value="Pending Room Assignment">Pending Room Assignment</option>
+                {allRooms.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+                <option value="OTHER_ROOM">-- Other Custom Location / Referral Ward --</option>
+              </select>
+            </div>
+            {isCustomRoom && (
+              <div>
+                <label style={styles.label}>Specify Custom Location</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g., ER Cubicle 2, Surgical Ward" 
+                  value={customRoomText}
+                  onChange={(e) => setCustomRoomText(e.target.value)}
+                  style={styles.input}
+                  required
+                />
+              </div>
+            )}
+            <div>
+              <label style={styles.label}>Admission Date (YYYY-MM-DD)</label>
+              <input 
+                type="text" 
+                value={formData.admissionDate} 
+                onChange={(e) => setFormData({...formData, admissionDate: e.target.value})}
+                style={styles.input}
+                required
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '14px' }}>
+            <div>
+              <label style={styles.label}>Attending Physician</label>
+              <input 
+                type="text" 
+                placeholder="e.g., Dr. Maria Santos" 
+                value={formData.physician} 
+                onChange={(e) => setFormData({...formData, physician: e.target.value})}
+                style={styles.input}
+              />
+            </div>
+            <div>
+              <label style={styles.label}>Initial Status / Disposition</label>
+              <select 
+                value={formData.status} 
+                onChange={(e) => setFormData({...formData, status: e.target.value})}
+                style={styles.input}
+              >
+                <option value="New Admission">New Admission</option>
+                <option value="Referral">Referral</option>
+                <option value="Stable">Stable</option>
+                <option value="Guarded">Guarded</option>
+                <option value="Critical">Critical</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <label style={styles.label}>Admitting Diagnosis / Working Impression</label>
+            <input 
+              type="text" 
+              placeholder="e.g., Community-Acquired Pneumonia, High Risk" 
+              value={formData.diagnosis} 
+              onChange={(e) => setFormData({...formData, diagnosis: e.target.value})}
+              style={styles.input}
+              required
+            />
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <label style={styles.label}>Initial Endorsement: Current Condition</label>
+            <textarea 
+              rows="2" 
+              placeholder="Brief clinical description..." 
+              value={formData.currentCondition} 
+              onChange={(e) => setFormData({...formData, currentCondition: e.target.value})}
+              style={styles.textarea}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+            <div>
+              <label style={styles.label}>Diagnostics / Pending Labs</label>
+              <textarea 
+                rows="2" 
+                value={formData.diagnostics} 
+                onChange={(e) => setFormData({...formData, diagnostics: e.target.value})}
+                style={styles.textarea}
+              />
+            </div>
+            <div>
+              <label style={styles.label}>Therapeutics / Medications</label>
+              <textarea 
+                rows="2" 
+                value={formData.therapeutics} 
+                onChange={(e) => setFormData({...formData, therapeutics: e.target.value})}
+                style={styles.textarea}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <button type="button" onClick={onClose} style={styles.cancelBtn}>Cancel</button>
+            <button type="submit" style={styles.saveClinicalBtn}>Save Admission Record</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// --- Main App Component ---
 export default function App() {
   const [currentView, setCurrentView] = useState('splash'); // 'splash', 'census', or 'archive'
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Date and Internist on Duty state for the Splash screen (persistent with localStorage)
   const [currentDateString, setCurrentDateString] = useState(() => {
-    const savedDateSpan = localStorage.getItem('jrrmdh_datespan');
-    if (savedDateSpan) {
-      return savedDateSpan;
-    }
-    // Default fallback anchor reverted back to September 1-2, 2026 as requested
-    return 'September 1 - September 2, 2026';
+    return localStorage.getItem('jrrmdh_datespan') || 'September 1 - September 2, 2026';
   });
 
   const [internistOnDuty, setInternistOnDuty] = useState(() => {
-    const savedInternist = localStorage.getItem('jrrmdh_internist');
-    return savedInternist ? savedInternist : 'Dr. Maria Santos';
+    return localStorage.getItem('jrrmdh_internist') || 'Dr. Maria Santos';
   });
   const [isEditingInternist, setIsEditingInternist] = useState(false);
   const [tempInternist, setTempInternist] = useState('');
 
-  // Save Date Span to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem('jrrmdh_datespan', currentDateString);
   }, [currentDateString]);
 
-  // Save Internist on Duty to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem('jrrmdh_internist', internistOnDuty);
   }, [internistOnDuty]);
 
-  // Modal states for admissions/referrals
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalInitialRoom, setModalInitialRoom] = useState('Pending Room Assignment');
 
-  // Transfer / Room Assignment modal states
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferTarget, setTransferTarget] = useState('');
   const [customTransferText, setCustomTransferText] = useState('');
   const [isCustomTransfer, setIsCustomTransfer] = useState(false);
 
-  // State for editing clinical details & endorsement
   const [isEditingClinical, setIsEditingClinical] = useState(false);
-  // Toggle switch specifically for locked core details (Name, Age/Sex, Admission Date, Physician)
   const [isEditingCoreDetails, setIsEditingCoreDetails] = useState(false);
 
   const [clinicalForm, setClinicalForm] = useState({
@@ -62,15 +249,10 @@ export default function App() {
     status: 'Stable'
   });
 
-  // Persistent Storage: Load patients from browser memory on startup
   const [patients, setPatients] = useState(() => {
     const savedPatients = localStorage.getItem('jrrmdh_patients');
     if (savedPatients) {
-      try {
-        return JSON.parse(savedPatients);
-      } catch (e) {
-        console.error("Failed to parse saved patients", e);
-      }
+      try { return JSON.parse(savedPatients); } catch (e) { console.error(e); }
     }
     return [
       {
@@ -112,20 +294,14 @@ export default function App() {
     ];
   });
 
-  // Persistent Storage: Save patients whenever the list changes
   useEffect(() => {
     localStorage.setItem('jrrmdh_patients', JSON.stringify(patients));
   }, [patients]);
 
-  // Persistent Storage: Load historical archive from browser memory on startup
   const [dischargedArchive, setDischargedArchive] = useState(() => {
     const savedArchive = localStorage.getItem('jrrmdh_archive');
     if (savedArchive) {
-      try {
-        return JSON.parse(savedArchive);
-      } catch (e) {
-        console.error("Failed to parse saved archive", e);
-      }
+      try { return JSON.parse(savedArchive); } catch (e) { console.error(e); }
     }
     return [
       {
@@ -139,51 +315,33 @@ export default function App() {
     ];
   });
 
-  // Persistent Storage: Save archive whenever it changes
   useEffect(() => {
     localStorage.setItem('jrrmdh_archive', JSON.stringify(dischargedArchive));
   }, [dischargedArchive]);
 
   const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
 
-  // Pre-defined fixed rooms and wards structure (IM Beds only)
   const fixedRooms = [
-    "301",
-    "303-1", "303-2", "303-3", "303-4",
-    "304-1", "304-2", "304-3", "304-4",
-    "305",
-    "307",
-    "309-1", "309-2",
-    "PR",
-    "310-1", "310-2", "310-3", "310-4",
-    "312-1", "312-2", "312-3", "312-4",
-    "ICU-B2",
-    "ICU-B3",
-    "ICU-High-Risk",
-    "ICU-ISO"
+    "301", "303-1", "303-2", "303-3", "303-4",
+    "304-1", "304-2", "304-3", "304-4", "305", "307",
+    "309-1", "309-2", "PR", "310-1", "310-2", "310-3", "310-4",
+    "312-1", "312-2", "312-3", "312-4", "ICU-B2", "ICU-B3",
+    "ICU-High-Risk", "ICU-ISO"
   ];
 
-  const isReferralLocation = (room) => {
-    return room !== 'Pending Room Assignment' && !fixedRooms.includes(room);
-  };
+  const isReferralLocation = (room) => room !== 'Pending Room Assignment' && !fixedRooms.includes(room);
 
-  const customReferrals = patients
-    .map(p => p.wardRoom)
-    .filter(room => isReferralLocation(room));
-
+  const customReferrals = patients.map(p => p.wardRoom).filter(room => isReferralLocation(room));
   const allRooms = [...fixedRooms, ...Array.from(new Set(customReferrals))];
 
   const calculateHospitalDay = (admissionDateStr) => {
     if (!admissionDateStr) return 0;
     const parts = admissionDateStr.split('-');
     if (parts.length !== 3) return 0;
-    
     const admissionDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
     const today = new Date();
-    
     admissionDate.setHours(0, 0, 0, 0);
     today.setHours(0, 0, 0, 0);
-    
     const diffTime = today - admissionDate;
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     return diffDays >= 0 ? diffDays : 0;
@@ -196,7 +354,6 @@ export default function App() {
       if (index === -1) return prev;
       const targetIndex = direction === 'up' ? index - 1 : index + 1;
       if (targetIndex < 0 || targetIndex >= prev.length) return prev;
-      
       const updated = [...prev];
       const temp = updated[index];
       updated[index] = updated[targetIndex];
@@ -206,7 +363,6 @@ export default function App() {
   };
 
   const handlePerformEndorsement = () => {
-    // Two-step confirmation safeguard to prevent accidental clicks
     const confirmEndorsement = window.confirm(
       "Are you sure you want to endorse the shift? This will generate a duty snapshot, archive current data, and advance the duty span."
     );
@@ -288,10 +444,8 @@ export default function App() {
 
   const handleClearRoom = (idOrRoom, e) => {
     if (e) e.stopPropagation();
-    
     if (window.confirm("Clear this room and archive individual patient record?")) {
       const patientToArchive = patients.find(p => p.id === idOrRoom || p.wardRoom === idOrRoom);
-      
       if (patientToArchive) {
         const todayStr = new Date().toISOString().split('T')[0];
         const archivedRecord = {
@@ -315,7 +469,6 @@ export default function App() {
 
   const handleSavePatientModal = (roomName, formData) => {
     const finalRoom = roomName.trim();
-
     if (finalRoom !== 'Pending Room Assignment' && finalRoom !== '') {
       const occupant = patients.find(p => p.wardRoom.toLowerCase() === finalRoom.toLowerCase());
       if (occupant) {
@@ -363,7 +516,7 @@ export default function App() {
       remarks: patient.endorsement?.remarks || '',
       status: patient.status || 'Stable'
     });
-    setIsEditingCoreDetails(false); // Default to locked core details
+    setIsEditingCoreDetails(false);
     setIsEditingClinical(true);
   };
 
@@ -373,7 +526,6 @@ export default function App() {
       if (p.id === selectedPatient.id) {
         const updated = {
           ...p,
-          // Update core details only if core toggle is enabled, otherwise keep original values
           name: isEditingCoreDetails ? clinicalForm.name : p.name,
           ageSex: isEditingCoreDetails ? clinicalForm.ageSex : p.ageSex,
           admissionDate: isEditingCoreDetails ? clinicalForm.admissionDate : p.admissionDate,
@@ -412,13 +564,13 @@ export default function App() {
     record.admissionPeriod.toLowerCase().includes(archiveSearchQuery.toLowerCase())
   );
 
-  // 1. Welcome Splash View
   if (currentView === 'splash') {
     return (
       <div style={styles.splashContainer}>
         <div style={styles.splashCard}>
-          <h1 style={styles.hospitalTitle}>Dr. Jose P. Rizal Memorial District Hospital</h1>
-          <h2 style={styles.deptTitle}>Department of Internal Medicine &mdash; Inpatient Census</h2>
+          <div style={styles.splashHeaderTag}>JRRMDH DEPARTMENT OF INTERNAL MEDICINE</div>
+          <h1 style={styles.hospitalTitle}>Inpatient Duty Portal</h1>
+          <p style={styles.deptTitle}>High-Fidelity Census & Shift Management System</p>
           
           <div style={styles.splashInfoBox}>
             <div style={styles.infoRow}>
@@ -435,7 +587,7 @@ export default function App() {
                       value={tempInternist} 
                       onChange={(e) => setTempInternist(e.target.value)}
                       style={styles.physicianInput}
-                      placeholder="Enter internist name(s)..."
+                      placeholder="Enter internist name..."
                     />
                     <button 
                       style={styles.savePhysicianBtn} 
@@ -466,28 +618,19 @@ export default function App() {
           </div>
 
           <div style={styles.badgeContainer}>
-            <span style={styles.badge}>Active Census: {patients.length}</span>
+            <span style={styles.badge}>Active Inpatients: {patients.length}</span>
             <span style={styles.badgeArchive}>Archived Records: {dischargedArchive.length}</span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <button 
-              style={styles.enterButton} 
-              onClick={() => setCurrentView('census')}
-            >
-              Enter Daily Census
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <button style={styles.enterButton} onClick={() => setCurrentView('census')}>
+              Enter Daily Census Dashboard
             </button>
-            <button 
-              style={styles.endorseSplashButton} 
-              onClick={handlePerformEndorsement}
-            >
+            <button style={styles.endorseSplashButton} onClick={handlePerformEndorsement}>
               🔄 Endorse Shift (New Duty Span & Handover)
             </button>
-            <button 
-              style={styles.archiveNavButton} 
-              onClick={() => setCurrentView('archive')}
-            >
-              View Historical Archive (Snapshots & Discharges)
+            <button style={styles.archiveNavButton} onClick={() => setCurrentView('archive')}>
+              View Historical Archive & Snapshots
             </button>
           </div>
         </div>
@@ -495,65 +638,52 @@ export default function App() {
     );
   }
 
-  // 4. Historical Archive View
   if (currentView === 'archive') {
     const isSearching = archiveSearchQuery.trim() !== '';
-
     return (
       <div style={styles.container}>
         <div style={styles.headerRow}>
           <h2>Historical Archive & Duty Snapshots</h2>
-          <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>
-            Home Splash
-          </button>
+          <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>Home Splash</button>
         </div>
 
-        <div style={{ position: 'relative', width: '100%', marginBottom: '10px' }}>
+        <div style={{ position: 'relative', width: '100%', marginBottom: '15px' }}>
           <input 
             type="text" 
-            placeholder="Search archive by duty period, snapshot title, or diagnosis..." 
+            placeholder="Search archive by period, snapshot title, or clinical summary..." 
             value={archiveSearchQuery}
             onChange={(e) => setArchiveSearchQuery(e.target.value)}
-            style={{ ...styles.searchBar, marginBottom: 0, paddingRight: archiveSearchQuery ? '35px' : '12px' }}
+            style={{ ...styles.searchBar, marginBottom: 0, paddingRight: archiveSearchQuery ? '35px' : '14px' }}
             autoFocus
           />
           {archiveSearchQuery && (
             <button 
               onClick={() => setArchiveSearchQuery('')}
-              style={{
-                position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
-                background: 'none', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#666', cursor: 'pointer'
-              }}
+              style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#666', cursor: 'pointer' }}
             >
               &times;
             </button>
           )}
         </div>
 
-        <p style={styles.subText}>
-          {!isSearching 
-            ? "Showing all saved duty-shift snapshots and individual patient archives." 
-            : `Found ${filteredArchive.length} matching archive record(s):`}
-        </p>
-
         <div style={styles.listContainer}>
           {filteredArchive.length === 0 ? (
-            <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '8px' }}>No matching archive records found.</p>
+            <p style={{ textAlign: 'center', padding: '25px', color: '#666', background: '#fff', borderRadius: '10px' }}>No matching archive records found.</p>
           ) : (
             filteredArchive.map(record => (
-              <div key={record.id} style={{ ...styles.patientRow, borderLeftColor: record.isSnapshot ? '#28a745' : '#6c757d', display: 'block' }}>
+              <div key={record.id} style={{ ...styles.patientRow, borderLeftColor: record.isSnapshot ? '#10b981' : '#64748b', display: 'block' }}>
                 <div style={{ width: '100%' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h4 style={{ margin: '0 0 4px 0', color: record.isSnapshot ? '#28a745' : '#0056b3' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                    <h4 style={{ margin: '0 0 4px 0', color: record.isSnapshot ? '#059669' : '#1e3a8a', fontSize: '16px' }}>
                       {record.isSnapshot ? `📦 ${record.name}` : record.name}
                     </h4>
                     <span style={styles.periodBadge}>{record.admissionPeriod}</span>
                   </div>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#555' }}>{record.finalImpression}</p>
+                  <p style={{ margin: '6px 0 0 0', fontSize: '14px', color: '#475569' }}>{record.finalImpression}</p>
 
                   {record.isSnapshot && record.snapshotPatients && (
-                    <div style={{ marginTop: '12px', overflowX: 'auto', border: '1px solid #ddd', borderRadius: '6px', background: '#fafafa', padding: '8px' }}>
-                      <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#333', margin: '0 0 6px 0' }}>Endorsed Census Snapshot Table ({record.snapshotPatients.length} patients):</p>
+                    <div style={{ marginTop: '14px', overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc', padding: '12px' }}>
+                      <p style={{ fontSize: '13px', fontWeight: 'bold', color: '#334155', margin: '0 0 8px 0' }}>Endorsed Census Snapshot Table ({record.snapshotPatients.length} patients):</p>
                       <table style={styles.archiveTable}>
                         <thead>
                           <tr style={styles.tableHeaderRow}>
@@ -574,7 +704,7 @@ export default function App() {
                               <td style={styles.td}>{sp.admittingDiagnosis}</td>
                               <td style={styles.td}><span style={styles.statusBadge(sp.status)}>{sp.status}</span></td>
                               <td style={styles.td}>
-                                <div style={{ fontSize: '12px' }}>
+                                <div style={{ fontSize: '12px', lineHeight: '1.4' }}>
                                   <strong>Cond:</strong> {sp.endorsement?.currentCondition}<br/>
                                   <strong>Labs:</strong> {sp.endorsement?.diagnostics}<br/>
                                   <strong>Meds:</strong> {sp.endorsement?.therapeutics}
@@ -593,15 +723,12 @@ export default function App() {
         </div>
 
         <div style={{ marginTop: '25px' }}>
-          <button style={styles.backButton} onClick={() => setCurrentView('census')}>
-            &larr; Back to Active Census
-          </button>
+          <button style={styles.backButton} onClick={() => setCurrentView('census')}>&larr; Back to Active Census</button>
         </div>
       </div>
     );
   }
 
-  // 3. Detailed Patient View
   if (selectedPatient) {
     return (
       <div style={styles.container}>
@@ -610,13 +737,13 @@ export default function App() {
         </button>
 
         <div style={styles.detailCard}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '15px' }}>
             <div>
-              <h2>{selectedPatient.name} ({selectedPatient.ageSex})</h2>
-              <p><strong>Location / Room:</strong> <span style={{ color: '#0056b3', fontWeight: 'bold' }}>{selectedPatient.wardRoom}</span></p>
-              <p><strong>Attending Physician:</strong> {selectedPatient.physician || 'Not specified'}</p>
+              <h2 style={{ margin: '0 0 6px 0', color: '#1e3a8a' }}>{selectedPatient.name} <span style={{ fontSize: '18px', color: '#64748b', fontWeight: 'normal' }}>({selectedPatient.ageSex})</span></h2>
+              <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Location / Room:</strong> <span style={{ color: '#0284c7', fontWeight: 'bold' }}>{selectedPatient.wardRoom}</span></p>
+              <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Attending Physician:</strong> {selectedPatient.physician || 'Not specified'}</p>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '10px' }}>
               <button style={styles.transferButton} onClick={openTransferModal}>
                 {selectedPatient.wardRoom === 'Pending Room Assignment' ? 'Assign Room/Bed' : 'Transfer Bed'}
               </button>
@@ -636,113 +763,58 @@ export default function App() {
             </div>
           </div>
 
-          <p><strong>Admission Date:</strong> {selectedPatient.admissionDate} (Hospital Day {calculateHospitalDay(selectedPatient.admissionDate)})</p>
+          <p style={{ marginTop: '12px', fontSize: '14px', color: '#475569' }}><strong>Admission Date:</strong> {selectedPatient.admissionDate} (Hospital Day {calculateHospitalDay(selectedPatient.admissionDate)})</p>
           
           <hr style={styles.divider} />
 
           {isEditingClinical ? (
             <form onSubmit={saveClinicalEdits} style={styles.editFormBox}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                <h3 style={{ margin: 0, color: '#0056b3' }}>Update Clinical Details & Disposition</h3>
-                
-                {/* Separate toggle switch for core fields */}
-                <div style={{ display: 'flex', alignItems: 'center', background: '#e9ecef', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ced4da' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                <h3 style={{ margin: 0, color: '#1e3a8a', fontSize: '18px' }}>Update Clinical Details & Disposition</h3>
+                <div style={{ display: 'flex', alignItems: 'center', background: '#f1f5f9', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
                     <input 
                       type="checkbox" 
                       checked={isEditingCoreDetails} 
                       onChange={(e) => setIsEditingCoreDetails(e.target.checked)}
-                      style={{ cursor: 'pointer' }}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                     />
                     Unlock Name, Age/Sex, Date & Physician
                   </label>
                 </div>
               </div>
 
-              {/* Core Details Section (Editable only if toggle is checked) */}
-              <div style={{ background: isEditingCoreDetails ? '#fff3cd' : '#f1f3f5', padding: '12px', borderRadius: '6px', marginBottom: '15px', border: '1px solid', borderColor: isEditingCoreDetails ? '#ffeeba' : '#dee2e6' }}>
-                <p style={{ margin: '0 0 8px 0', fontSize: '11px', fontWeight: 'bold', color: isEditingCoreDetails ? '#856404' : '#6c757d' }}>
-                  {isEditingCoreDetails ? '⚠️ Core Information Unlocked for Editing' : '🔒 Core Information Locked (Toggle above to edit)'}
-                </p>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '8px' }}>
+              <div style={{ background: isEditingCoreDetails ? '#fef3c7' : '#f8fafc', padding: '16px', borderRadius: '8px', marginBottom: '16px', border: '1px solid', borderColor: isEditingCoreDetails ? '#fde68a' : '#e2e8f0' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '10px' }}>
                   <div>
                     <label style={styles.label}>Patient Name</label>
-                    <input 
-                      type="text" 
-                      value={clinicalForm.name} 
-                      onChange={(e) => setClinicalForm({...clinicalForm, name: e.target.value})}
-                      style={styles.input}
-                      disabled={!isEditingCoreDetails}
-                      required
-                    />
+                    <input type="text" value={clinicalForm.name} onChange={(e) => setClinicalForm({...clinicalForm, name: e.target.value})} style={styles.input} disabled={!isEditingCoreDetails} required />
                   </div>
                   <div>
                     <label style={styles.label}>Age / Sex</label>
-                    <input 
-                      type="text" 
-                      value={clinicalForm.ageSex} 
-                      onChange={(e) => setClinicalForm({...clinicalForm, ageSex: e.target.value})}
-                      style={styles.input}
-                      disabled={!isEditingCoreDetails}
-                      required
-                    />
+                    <input type="text" value={clinicalForm.ageSex} onChange={(e) => setClinicalForm({...clinicalForm, ageSex: e.target.value})} style={styles.input} disabled={!isEditingCoreDetails} required />
                   </div>
                 </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
-                    <label style={styles.label}>Admission Date (YYYY-MM-DD)</label>
-                    <input 
-                      type="text" 
-                      value={clinicalForm.admissionDate} 
-                      onChange={(e) => setClinicalForm({...clinicalForm, admissionDate: e.target.value})}
-                      style={styles.input}
-                      disabled={!isEditingCoreDetails}
-                      required
-                    />
+                    <label style={styles.label}>Admission Date</label>
+                    <input type="text" value={clinicalForm.admissionDate} onChange={(e) => setClinicalForm({...clinicalForm, admissionDate: e.target.value})} style={styles.input} disabled={!isEditingCoreDetails} required />
                   </div>
                   <div>
                     <label style={styles.label}>Attending Physician</label>
-                    <input 
-                      type="text" 
-                      value={clinicalForm.physician} 
-                      onChange={(e) => setClinicalForm({...clinicalForm, physician: e.target.value})}
-                      style={styles.input}
-                      disabled={!isEditingCoreDetails}
-                    />
+                    <input type="text" value={clinicalForm.physician} onChange={(e) => setClinicalForm({...clinicalForm, physician: e.target.value})} style={styles.input} disabled={!isEditingCoreDetails} />
                   </div>
                 </div>
               </div>
 
-              <div style={{ marginBottom: '12px' }}>
+              <div style={{ marginBottom: '14px' }}>
                 <label style={styles.label}>Admitting Diagnosis</label>
-                <input 
-                  type="text" 
-                  value={clinicalForm.admittingDiagnosis} 
-                  onChange={(e) => setClinicalForm({...clinicalForm, admittingDiagnosis: e.target.value})}
-                  style={styles.input}
-                  required
-                />
+                <input type="text" value={clinicalForm.admittingDiagnosis} onChange={(e) => setClinicalForm({...clinicalForm, admittingDiagnosis: e.target.value})} style={styles.input} required />
               </div>
 
-              <div style={{ marginBottom: '12px' }}>
-                <label style={styles.label}>Working Impression</label>
-                <input 
-                  type="text" 
-                  value={clinicalForm.workingImpression} 
-                  onChange={(e) => setClinicalForm({...clinicalForm, workingImpression: e.target.value})}
-                  style={styles.input}
-                />
-              </div>
-
-              <div style={{ marginBottom: '12px' }}>
+              <div style={{ marginBottom: '14px' }}>
                 <label style={styles.label}>Status / Disposition</label>
-                <select 
-                  value={clinicalForm.status} 
-                  onChange={(e) => setClinicalForm({...clinicalForm, status: e.target.value})}
-                  style={styles.input}
-                >
+                <select value={clinicalForm.status} onChange={(e) => setClinicalForm({...clinicalForm, status: e.target.value})} style={styles.input}>
                   <option value="Referral">Referral</option>
                   <option value="New Admission">New Admission</option>
                   <option value="Stable">Stable</option>
@@ -756,75 +828,52 @@ export default function App() {
                 </select>
               </div>
 
-              <div style={{ marginBottom: '12px' }}>
+              <div style={{ marginBottom: '14px' }}>
                 <label style={styles.label}>Endorsement: Current Condition</label>
-                <textarea 
-                  rows="2" 
-                  value={clinicalForm.currentCondition} 
-                  onChange={(e) => setClinicalForm({...clinicalForm, currentCondition: e.target.value})}
-                  style={styles.textarea}
-                />
+                <textarea rows="2" value={clinicalForm.currentCondition} onChange={(e) => setClinicalForm({...clinicalForm, currentCondition: e.target.value})} style={styles.textarea} />
               </div>
 
-              <div style={{ marginBottom: '12px' }}>
+              <div style={{ marginBottom: '14px' }}>
                 <label style={styles.label}>Endorsement: Diagnostics / Labs</label>
-                <textarea 
-                  rows="2" 
-                  value={clinicalForm.diagnostics} 
-                  onChange={(e) => setClinicalForm({...clinicalForm, diagnostics: e.target.value})}
-                  style={styles.textarea}
-                />
+                <textarea rows="2" value={clinicalForm.diagnostics} onChange={(e) => setClinicalForm({...clinicalForm, diagnostics: e.target.value})} style={styles.textarea} />
               </div>
 
-              <div style={{ marginBottom: '12px' }}>
+              <div style={{ marginBottom: '14px' }}>
                 <label style={styles.label}>Endorsement: Therapeutics / Medications</label>
-                <textarea 
-                  rows="2" 
-                  value={clinicalForm.therapeutics} 
-                  onChange={(e) => setClinicalForm({...clinicalForm, therapeutics: e.target.value})}
-                  style={styles.textarea}
-                />
+                <textarea rows="2" value={clinicalForm.therapeutics} onChange={(e) => setClinicalForm({...clinicalForm, therapeutics: e.target.value})} style={styles.textarea} />
               </div>
 
-              <div style={{ marginBottom: '15px' }}>
+              <div style={{ marginBottom: '20px' }}>
                 <label style={styles.label}>Endorsement: Remarks / Notes</label>
-                <textarea 
-                  rows="2" 
-                  value={clinicalForm.remarks} 
-                  onChange={(e) => setClinicalForm({...clinicalForm, remarks: e.target.value})}
-                  style={styles.textarea}
-                />
+                <textarea rows="2" value={clinicalForm.remarks} onChange={(e) => setClinicalForm({...clinicalForm, remarks: e.target.value})} style={styles.textarea} />
               </div>
 
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '12px' }}>
                 <button type="submit" style={styles.saveClinicalBtn}>Save Changes</button>
                 <button type="button" onClick={() => { setIsEditingClinical(false); setIsEditingCoreDetails(false); }} style={styles.cancelBtn}>Cancel</button>
               </div>
             </form>
           ) : (
             <>
-              <h3>Clinical Details</h3>
-              <p><strong>Admitting Diagnosis:</strong> {selectedPatient.admittingDiagnosis}</p>
-              <p><strong>Working Impression:</strong> {selectedPatient.workingImpression}</p>
+              <h3 style={{ color: '#334155', fontSize: '18px', marginTop: '20px' }}>Clinical Overview</h3>
+              <p style={{ fontSize: '15px' }}><strong>Admitting Diagnosis:</strong> {selectedPatient.admittingDiagnosis}</p>
+              <p style={{ fontSize: '15px' }}><strong>Working Impression:</strong> {selectedPatient.workingImpression}</p>
               
               <div style={styles.endorsementBox}>
-                <h4>Daily Endorsement</h4>
-                <p><strong>Current Condition:</strong> {selectedPatient.endorsement?.currentCondition}</p>
-                <p><strong>Diagnostics:</strong> {selectedPatient.endorsement?.diagnostics}</p>
-                <p><strong>Therapeutics:</strong> {selectedPatient.endorsement?.therapeutics}</p>
+                <h4 style={{ margin: '0 0 10px 0', color: '#047857', fontSize: '16px' }}>Daily Endorsement</h4>
+                <p style={{ margin: '6px 0', fontSize: '14px' }}><strong>Current Condition:</strong> {selectedPatient.endorsement?.currentCondition}</p>
+                <p style={{ margin: '6px 0', fontSize: '14px' }}><strong>Diagnostics:</strong> {selectedPatient.endorsement?.diagnostics}</p>
+                <p style={{ margin: '6px 0', fontSize: '14px' }}><strong>Therapeutics:</strong> {selectedPatient.endorsement?.therapeutics}</p>
                 {selectedPatient.endorsement?.remarks && (
-                  <p><strong>Remarks:</strong> {selectedPatient.endorsement?.remarks}</p>
+                  <p style={{ margin: '6px 0', fontSize: '14px' }}><strong>Remarks:</strong> {selectedPatient.endorsement?.remarks}</p>
                 )}
               </div>
 
-              <p><strong>Status / Disposition:</strong> <span style={styles.statusBadge(selectedPatient.status)}>{selectedPatient.status}</span></p>
+              <p style={{ fontSize: '15px' }}><strong>Status / Disposition:</strong> <span style={styles.statusBadge(selectedPatient.status)}>{selectedPatient.status}</span></p>
             </>
           )}
 
-          <button 
-            style={styles.clearRoomButton} 
-            onClick={(e) => handleClearRoom(selectedPatient.id, e)}
-          >
+          <button style={styles.clearRoomButton} onClick={(e) => handleClearRoom(selectedPatient.id, e)}>
             Clear Room & Archive Record
           </button>
         </div>
@@ -832,9 +881,9 @@ export default function App() {
         {isTransferModalOpen && (
           <div style={styles.modalOverlay}>
             <div style={styles.modalCard}>
-              <h3 style={{ margin: '0 0 15px 0', color: '#003d82' }}>Assign Room / Transfer &mdash; {selectedPatient.name}</h3>
+              <h3 style={{ margin: '0 0 15px 0', color: '#1e3a8a', fontSize: '18px' }}>Assign Room / Transfer &mdash; {selectedPatient.name}</h3>
               <form onSubmit={executeTransfer}>
-                <div style={{ marginBottom: '15px' }}>
+                <div style={{ marginBottom: '16px' }}>
                   <label style={styles.label}>Select Destination Room / Bed</label>
                   <select 
                     value={isCustomTransfer ? 'OTHER_OPTION' : transferTarget}
@@ -857,7 +906,7 @@ export default function App() {
                 </div>
 
                 {isCustomTransfer && (
-                  <div style={{ marginBottom: '15px' }}>
+                  <div style={{ marginBottom: '16px' }}>
                     <label style={styles.label}>Custom Referral Location / Ward</label>
                     <input 
                       type="text" 
@@ -870,7 +919,7 @@ export default function App() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px' }}>
                   <button type="button" onClick={() => setIsTransferModalOpen(false)} style={styles.cancelBtn}>Cancel</button>
                   <button type="submit" style={styles.saveClinicalBtn}>Confirm Location</button>
                 </div>
@@ -882,68 +931,55 @@ export default function App() {
     );
   }
 
-  // 2. Main Census List & Room Grid Overview
   return (
     <div style={styles.container}>
       <div style={styles.headerRow}>
-        <h2>IM on Duty: <span style={{ color: '#0056b3' }}>{internistOnDuty}</span></h2>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>
-            + Admit
-          </button>
-          <button style={styles.referralButton} onClick={openAddReferralModal}>
-            + Referral
-          </button>
-          <button style={styles.archiveNavBtnHeader} onClick={() => setCurrentView('archive')}>
-            Archive
-          </button>
-          <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>
-            Home
-          </button>
+        <h2 style={{ margin: 0, fontSize: '20px', color: '#1e3a8a' }}>IM on Duty: <span style={{ color: '#0284c7' }}>{internistOnDuty}</span></h2>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>+ Admit</button>
+          <button style={styles.referralButton} onClick={openAddReferralModal}>+ Referral</button>
+          <button style={styles.archiveNavBtnHeader} onClick={() => setCurrentView('archive')}>Archive</button>
+          <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>Home</button>
         </div>
       </div>
 
-      <div style={{ position: 'relative', width: '100%', marginBottom: '10px' }}>
+      <div style={{ position: 'relative', width: '100%', marginBottom: '15px' }}>
         <input 
           type="text" 
-          placeholder="Search active inpatients by name (Last, First), room, or diagnosis..." 
+          placeholder="Search active inpatients by name, room, or diagnosis..." 
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ ...styles.searchBar, marginBottom: 0, paddingRight: searchQuery ? '35px' : '12px' }}
+          style={{ ...styles.searchBar, marginBottom: 0, paddingRight: searchQuery ? '35px' : '14px' }}
         />
         {searchQuery && (
           <button 
             onClick={() => setSearchQuery('')}
-            style={{
-              position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
-              background: 'none', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#666', cursor: 'pointer'
-            }}
+            style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#666', cursor: 'pointer' }}
           >
             &times;
           </button>
         )}
       </div>
 
-      <h3 style={{ fontSize: '16px', color: '#444', marginTop: '20px' }}>Ward, Room & ICU Status (Bed Management Overview)</h3>
+      <h3 style={{ fontSize: '16px', color: '#334155', marginTop: '20px', marginBottom: '8px' }}>Ward, Room & ICU Status (Bed Management Overview)</h3>
       <div style={styles.roomGrid}>
         {allRooms.map(room => {
           const occupant = patients.find(p => p.wardRoom === room);
-          
           let cardBg = '#ffffff';
-          let cardBorder = '#ddd';
-          let badgeBg = '#f1f3f5';
-          let badgeColor = '#6c757d';
+          let cardBorder = '#e2e8f0';
+          let badgeBg = '#f1f5f9';
+          let badgeColor = '#64748b';
 
           if (occupant) {
             const hDay = calculateHospitalDay(occupant.admissionDate);
             if (hDay <= 1) {
-              cardBg = '#e3f2fd'; cardBorder = '#90caf9'; badgeBg = '#bbdefb'; badgeColor = '#0d47a1';
+              cardBg = '#eff6ff'; cardBorder = '#93c5fd'; badgeBg = '#dbeafe'; badgeColor = '#1d4ed8';
             } else if (hDay >= 2 && hDay <= 7) {
-              cardBg = '#e8f5e9'; cardBorder = '#a5d6a7'; badgeBg = '#c8e6c9'; badgeColor = '#1b5e20';
+              cardBg = '#f0fdf4'; cardBorder = '#86efac'; badgeBg = '#dcfce7'; badgeColor = '#15803d';
             } else if (hDay >= 8 && hDay <= 14) {
-              cardBg = '#fff3e0'; cardBorder = '#ffcc80'; badgeBg = '#ffe0b2'; badgeColor = '#e65100';
+              cardBg = '#fff7ed'; cardBorder = '#fdba74'; badgeBg = '#ffedd5'; badgeColor = '#c2410c';
             } else {
-              cardBg = '#ffebee'; cardBorder = '#ef9a9a'; badgeBg = '#ffcdd2'; badgeColor = '#b71c1c';
+              cardBg = '#fef2f2'; cardBorder = '#fca5a5'; badgeBg = '#fee2e2'; badgeColor = '#b91c1c';
             }
           }
 
@@ -951,20 +987,15 @@ export default function App() {
             <div 
               key={room}
               onClick={() => occupant && setSelectedPatient(occupant)}
-              style={{
-                ...styles.roomCard,
-                background: cardBg,
-                borderColor: cardBorder,
-                cursor: occupant ? 'pointer' : 'default'
-              }}
+              style={{ ...styles.roomCard, background: cardBg, borderColor: cardBorder, cursor: occupant ? 'pointer' : 'default' }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ fontSize: '12px' }}>{room}</strong>
-                <span style={{ fontSize: '10px', padding: '2px 4px', borderRadius: '4px', background: badgeBg, color: badgeColor }}>
+                <strong style={{ fontSize: '12px', color: '#1e293b' }}>{room}</strong>
+                <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: badgeBg, color: badgeColor, fontWeight: 'bold' }}>
                   {occupant ? `Day ${calculateHospitalDay(occupant.admissionDate)}` : 'Vacant'}
                 </span>
               </div>
-              <p style={{ fontSize: '12px', margin: '6px 0 0 0', color: occupant ? '#333' : '#aaa', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <p style={{ fontSize: '12px', margin: '6px 0 0 0', color: occupant ? '#1e293b' : '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: occupant ? '500' : 'normal' }}>
                 {occupant ? occupant.name : 'Vacant'}
               </p>
             </div>
@@ -972,21 +1003,20 @@ export default function App() {
         })}
       </div>
 
-      {/* SECTION 1: IM Patients */}
-      <h3 style={{ fontSize: '16px', color: '#003d82', marginTop: '25px', marginBottom: '10px' }}>
+      <h3 style={{ fontSize: '16px', color: '#1e3a8a', marginTop: '25px', marginBottom: '10px' }}>
         IM Inpatients & Unassigned Admissions ({imPatientsList.length})
       </h3>
       <div style={styles.listContainer}>
         {imPatientsList.length === 0 ? (
-          <p style={{ textAlign: 'center', padding: '15px', color: '#666', background: '#fff', borderRadius: '8px' }}>No IM inpatients found.</p>
+          <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No IM inpatients found.</p>
         ) : (
           imPatientsList.map(patient => (
             <div key={patient.id} style={styles.patientRow} onClick={() => setSelectedPatient(patient)}>
               <div>
-                <h4 style={{ margin: '0 0 5px 0', color: '#0056b3' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
-                <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>{patient.admittingDiagnosis} (Day {calculateHospitalDay(patient.admissionDate)})</p>
+                <h4 style={{ margin: '0 0 4px 0', color: '#1e3a8a', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
+                <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.admittingDiagnosis} (Day {calculateHospitalDay(patient.admissionDate)})</p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={styles.statusBadge(patient.status)}>{patient.status}</span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
@@ -999,21 +1029,20 @@ export default function App() {
         )}
       </div>
 
-      {/* SECTION 2: Referrals */}
-      <h3 style={{ fontSize: '16px', color: '#28a745', marginTop: '25px', marginBottom: '10px' }}>
+      <h3 style={{ fontSize: '16px', color: '#059669', marginTop: '25px', marginBottom: '10px' }}>
         External Department Referrals ({referralPatientsList.length})
       </h3>
       <div style={styles.listContainer}>
         {referralPatientsList.length === 0 ? (
-          <p style={{ textAlign: 'center', padding: '15px', color: '#666', background: '#fff', borderRadius: '8px' }}>No active referrals.</p>
+          <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No active referrals.</p>
         ) : (
           referralPatientsList.map(patient => (
-            <div key={patient.id} style={{ ...styles.patientRow, borderLeftColor: '#28a745' }} onClick={() => setSelectedPatient(patient)}>
+            <div key={patient.id} style={{ ...styles.patientRow, borderLeftColor: '#10b981' }} onClick={() => setSelectedPatient(patient)}>
               <div>
-                <h4 style={{ margin: '0 0 5px 0', color: '#28a745' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
-                <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>{patient.admittingDiagnosis}</p>
+                <h4 style={{ margin: '0 0 4px 0', color: '#059669', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
+                <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.admittingDiagnosis}</p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={styles.statusBadge(patient.status)}>{patient.status}</span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
@@ -1040,66 +1069,64 @@ export default function App() {
   );
 }
 
-// Styling elements
 const styles = {
-  splashContainer: {
-    display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh',
-    background: 'linear-gradient(135deg, #0056b3 0%, #003d82 100%)', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif'
-  },
-  splashCard: { background: 'white', padding: '40px', borderRadius: '12px', textAlign: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', maxWidth: '580px', width: '90%' },
-  hospitalTitle: { color: '#003d82', margin: '0 0 10px 0', fontSize: '22px' },
-  deptTitle: { color: '#555', fontSize: '15px', fontWeight: 'normal', marginBottom: '20px' },
-  splashInfoBox: { background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '8px', padding: '15px 20px', marginBottom: '20px', textAlign: 'left' },
-  infoRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: '14px' },
-  infoLabel: { fontWeight: 'bold', color: '#444' },
-  infoValue: { color: '#0056b3', fontWeight: '600' },
-  physicianInput: { padding: '4px 8px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px' },
-  savePhysicianBtn: { background: '#28a745', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' },
-  editPhysicianBtn: { background: 'none', border: 'none', color: '#0056b3', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline', padding: 0, fontWeight: 'bold' },
-  badgeContainer: { display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '25px', flexWrap: 'wrap' },
-  badge: { background: '#e3f2fd', color: '#0d47a1', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold' },
-  badgeArchive: { background: '#fff3cd', color: '#856404', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold' },
-  enterButton: { background: '#0056b3', color: 'white', border: 'none', padding: '12px 20px', fontSize: '15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
-  endorseSplashButton: { background: '#28a745', color: 'white', border: 'none', padding: '12px 20px', fontSize: '15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
-  archiveNavButton: { background: '#6c757d', color: 'white', border: 'none', padding: '12px 20px', fontSize: '15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
-  admitNewButton: { background: '#007bff', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
-  archiveNavBtnHeader: { background: '#ffc107', color: '#333', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
-  container: { maxWidth: '900px', margin: '40px auto', padding: '20px', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif' },
-  headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' },
-  homeButton: { background: '#f0f0f0', border: '1px solid #ccc', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' },
-  referralButton: { background: '#17a2b8', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
-  transferButton: { background: '#ffc107', color: '#333', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' },
-  editButton: { background: '#17a2b8', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' },
-  searchBar: { width: '100%', padding: '12px', fontSize: '15px', border: '1px solid #ccc', borderRadius: '6px', marginBottom: '10px', boxSizing: 'border-box' },
-  subText: { color: '#666', fontSize: '13px', marginBottom: '10px' },
-  roomGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '8px', marginTop: '10px', maxHeight: '260px', overflowY: 'auto', padding: '4px', border: '1px solid #eee', borderRadius: '6px', background: '#fafafa' },
-  roomCard: { padding: '8px', borderRadius: '6px', border: '1px solid', transition: 'all 0.2s ease' },
+  splashContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif', padding: '20px' },
+  splashCard: { background: '#ffffff', padding: '40px', borderRadius: '16px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)', maxWidth: '600px', width: '100%' },
+  splashHeaderTag: { fontSize: '11px', fontWeight: '800', letterSpacing: '1.2px', color: '#0284c7', marginBottom: '8px' },
+  hospitalTitle: { color: '#1e293b', margin: '0 0 6px 0', fontSize: '26px', fontWeight: '700' },
+  deptTitle: { color: '#64748b', fontSize: '14px', fontWeight: '500', marginBottom: '24px' },
+  splashInfoBox: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px', textAlign: 'left' },
+  infoRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', fontSize: '14px' },
+  infoLabel: { fontWeight: '600', color: '#334155' },
+  infoValue: { color: '#0284c7', fontWeight: '700' },
+  physicianInput: { padding: '6px 10px', fontSize: '13px', border: '1px solid #cbd5e1', borderRadius: '6px', outline: 'none' },
+  savePhysicianBtn: { background: '#10b981', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' },
+  editPhysicianBtn: { background: 'none', border: 'none', color: '#0284c7', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline', padding: 0, fontWeight: 'bold' },
+  badgeContainer: { display: 'flex', justifyContent: 'center', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' },
+  badge: { background: '#e0f2fe', color: '#0369a1', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold' },
+  badgeArchive: { background: '#fef3c7', color: '#b45309', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold' },
+  enterButton: { background: '#2563eb', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
+  endorseSplashButton: { background: '#059669', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
+  archiveNavButton: { background: '#475569', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
+  admitNewButton: { background: '#2563eb', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
+  archiveNavBtnHeader: { background: '#f59e0b', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
+  container: { maxWidth: '960px', margin: '30px auto', padding: '24px', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif', background: '#f8fafc', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' },
+  headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' },
+  homeButton: { background: '#e2e8f0', border: '1px solid #cbd5e1', color: '#334155', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' },
+  referralButton: { background: '#0d9488', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
+  transferButton: { background: '#f59e0b', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
+  editButton: { background: '#0891b2', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
+  searchBar: { width: '100%', padding: '12px 16px', fontSize: '15px', border: '1px solid #cbd5e1', borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box', outline: 'none', background: '#ffffff' },
+  roomGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px', marginTop: '10px', maxHeight: '280px', overflowY: 'auto', padding: '8px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#ffffff' },
+  roomCard: { padding: '10px', borderRadius: '8px', border: '1px solid', transition: 'all 0.2s ease' },
   listContainer: { display: 'flex', flexDirection: 'column', gap: '12px' },
-  patientRow: { background: 'white', padding: '16px 20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderLeft: '5px solid #0056b3' },
-  archiveTable: { width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', marginTop: '6px' },
-  tableHeaderRow: { background: '#e9ecef', color: '#333' },
-  th: { padding: '8px 10px', borderBottom: '2px solid #ddd', fontWeight: 'bold' },
-  td: { padding: '8px 10px', borderBottom: '1px solid #eee', color: '#444' },
-  tableRow: { transition: 'background 0.2s ease' },
-  periodBadge: { background: '#e2e3e5', color: '#383d41', padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' },
-  detailCard: { background: 'white', padding: '30px', borderRadius: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' },
-  backButton: { background: 'none', border: 'none', color: '#0056b3', fontSize: '15px', cursor: 'pointer', marginBottom: '15px', padding: 0, fontWeight: 'bold' },
-  divider: { border: '0', height: '1px', background: '#eee', margin: '20px 0' },
-  endorsementBox: { background: '#f9f9f9', padding: '15px', borderRadius: '6px', borderLeft: '4px solid #28a745', margin: '20px 0' },
-  editFormBox: { background: '#f8f9fa', padding: '20px', borderRadius: '8px', border: '1px solid #ddd', margin: '20px 0' },
-  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: '0', backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '1000' },
-  modalCard: { background: 'white', padding: '25px', borderRadius: '10px', width: '100%', maxWidth: '400px', boxShadow: '0 4px 15px rgba(0,0,0,0.2)' },
-  label: { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#444', marginBottom: '4px' },
-  input: { width: '100%', padding: '8px', fontSize: '14px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' },
-  textarea: { width: '100%', padding: '8px', fontSize: '14px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box', resize: 'vertical' },
-  saveClinicalBtn: { background: '#28a745', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' },
-  cancelBtn: { background: '#6c757d', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' },
-  clearRoomButton: { background: '#dc3545', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginTop: '20px' },
-  smallClearBtn: { background: '#ffcdd2', color: '#b71c1c', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
-  orderArrowBtn: { background: '#f1f3f5', border: '1px solid #ced4da', color: '#495057', width: '22px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '3px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold', padding: 0 },
+  patientRow: { background: 'white', padding: '18px 22px', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderLeft: '5px solid #2563eb' },
+  archiveTable: { width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', marginTop: '8px' },
+  tableHeaderRow: { background: '#e2e8f0', color: '#1e293b' },
+  th: { padding: '10px 12px', borderBottom: '2px solid #cbd5e1', fontWeight: 'bold' },
+  td: { padding: '10px 12px', borderBottom: '1px solid #f1f5f9', color: '#334155' },
+  tableRow: {},
+  periodBadge: { background: '#e2e8f0', color: '#334155', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
+  detailCard: { background: 'white', padding: '32px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0' },
+  backButton: { background: 'none', border: 'none', color: '#2563eb', fontSize: '15px', cursor: 'pointer', marginBottom: '16px', padding: 0, fontWeight: 'bold' },
+  divider: { border: '0', height: '1px', background: '#e2e8f0', margin: '24px 0' },
+  endorsementBox: { background: '#f0fdf4', padding: '18px', borderRadius: '8px', borderLeft: '4px solid #10b981', margin: '20px 0', border: '1px solid #d1fae5' },
+  editFormBox: { background: '#f8fafc', padding: '24px', borderRadius: '10px', border: '1px solid #cbd5e1', margin: '20px 0' },
+  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: '0', backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '1000' },
+  modalCard: { background: 'white', padding: '30px', borderRadius: '14px', width: '100%', maxWidth: '440px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', border: '1px solid #e2e8f0' },
+  modalCardLarge: { background: 'white', padding: '30px', borderRadius: '14px', width: '100%', maxWidth: '600px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', border: '1px solid #e2e8f0', maxHeight: '90vh', overflowY: 'auto' },
+  modalCloseBtn: { background: 'none', border: 'none', fontSize: '24px', fontWeight: 'bold', color: '#64748b', cursor: 'pointer' },
+  label: { display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' },
+  input: { width: '100%', padding: '10px 12px', fontSize: '14px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box', outline: 'none', background: '#fff' },
+  textarea: { width: '100%', padding: '10px 12px', fontSize: '14px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box', resize: 'vertical', outline: 'none', background: '#fff' },
+  saveClinicalBtn: { background: '#10b981', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' },
+  cancelBtn: { background: '#64748b', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' },
+  clearRoomButton: { background: '#ef4444', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', marginTop: '24px' },
+  smallClearBtn: { background: '#fee2e2', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
+  orderArrowBtn: { background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#334155', width: '24px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold', padding: 0 },
   statusBadge: (status) => ({
-    background: status === 'MGH' ? '#d1ecf1' : status === 'New Admission' ? '#cce5ff' : status === 'Referral' ? '#d4edda' : status === 'Improving' ? '#d4edda' : status === 'Critical' ? '#f8d7da' : '#fff3cd',
-    color: status === 'MGH' ? '#0c5460' : status === 'New Admission' ? '#004085' : status === 'Referral' ? '#155724' : status === 'Improving' ? '#155724' : status === 'Critical' ? '#721c24' : '#856404',
-    padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold'
+    background: status === 'MGH' ? '#e0f2fe' : status === 'New Admission' ? '#dbeafe' : status === 'Referral' ? '#d1fae5' : status === 'Improving' ? '#d1fae5' : status === 'Critical' ? '#fee2e2' : '#fef3c7',
+    color: status === 'MGH' ? '#0369a1' : status === 'New Admission' ? '#1d4ed8' : status === 'Referral' ? '#047857' : status === 'Improving' ? '#047857' : status === 'Critical' ? '#b91c1c' : '#b45309',
+    padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold'
   })
 };
