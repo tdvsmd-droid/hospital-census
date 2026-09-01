@@ -6,13 +6,14 @@ export default function App() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Date and Internist on Duty state for the Splash screen (persistent)
+  // Date and Internist on Duty state for the Splash screen (persistent with localStorage)
   const [currentDateString, setCurrentDateString] = useState(() => {
-    const now = new Date();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(now.getDate() + 1);
-    const options = { month: 'long', day: 'numeric' };
-    return `${now.toLocaleDateString('en-US', options)} - ${tomorrow.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+    const savedDateSpan = localStorage.getItem('jrrmdh_datespan');
+    if (savedDateSpan) {
+      return savedDateSpan;
+    }
+    // Default fallback anchor reverted back to September 1-2, 2026 as requested
+    return 'September 1 - September 2, 2026';
   });
 
   const [internistOnDuty, setInternistOnDuty] = useState(() => {
@@ -21,6 +22,11 @@ export default function App() {
   });
   const [isEditingInternist, setIsEditingInternist] = useState(false);
   const [tempInternist, setTempInternist] = useState('');
+
+  // Save Date Span to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('jrrmdh_datespan', currentDateString);
+  }, [currentDateString]);
 
   // Save Internist on Duty to localStorage whenever it changes
   useEffect(() => {
@@ -200,6 +206,12 @@ export default function App() {
   };
 
   const handlePerformEndorsement = () => {
+    // Two-step confirmation safeguard to prevent accidental clicks
+    const confirmEndorsement = window.confirm(
+      "Are you sure you want to endorse the shift? This will generate a duty snapshot, archive current data, and advance the duty span."
+    );
+    if (!confirmEndorsement) return;
+
     const incomingDoctor = prompt("Enter the name of the incoming Internist on Duty for the next shift:", "Dr. ");
     if (!incomingDoctor) return;
 
