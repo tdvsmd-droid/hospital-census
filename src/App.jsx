@@ -39,7 +39,14 @@ export default function App() {
 
   // State for editing clinical details & endorsement
   const [isEditingClinical, setIsEditingClinical] = useState(false);
+  // Toggle switch specifically for locked core details (Name, Age/Sex, Admission Date, Physician)
+  const [isEditingCoreDetails, setIsEditingCoreDetails] = useState(false);
+
   const [clinicalForm, setClinicalForm] = useState({
+    name: '',
+    ageSex: '',
+    admissionDate: '',
+    physician: '',
     admittingDiagnosis: '',
     workingImpression: '',
     currentCondition: '',
@@ -75,6 +82,7 @@ export default function App() {
           remarks: 'Waiting for relative to bring PhilHealth forms.'
         },
         status: 'MGH',
+        physician: 'Dr. Maria Santos',
         isReferral: false
       },
       {
@@ -92,6 +100,7 @@ export default function App() {
           remarks: 'Needs strict monitoring of capillary blood sugar every 2 hours.'
         },
         status: 'New Admission',
+        physician: 'Dr. Juan Reyes',
         isReferral: false
       }
     ];
@@ -148,7 +157,6 @@ export default function App() {
     "ICU-ISO"
   ];
 
-  // Helper function to identify custom referral locations for the grid overview
   const isReferralLocation = (room) => {
     return room !== 'Pending Room Assignment' && !fixedRooms.includes(room);
   };
@@ -159,7 +167,6 @@ export default function App() {
 
   const allRooms = [...fixedRooms, ...Array.from(new Set(customReferrals))];
 
-  // Helper function to calculate Hospital Day where admission date is Day 0
   const calculateHospitalDay = (admissionDateStr) => {
     if (!admissionDateStr) return 0;
     const parts = admissionDateStr.split('-');
@@ -176,7 +183,6 @@ export default function App() {
     return diffDays >= 0 ? diffDays : 0;
   };
 
-  // Function to manually reorder patients up or down in the sequence
   const movePatientOrder = (id, direction, e) => {
     if (e) e.stopPropagation();
     setPatients(prev => {
@@ -193,10 +199,9 @@ export default function App() {
     });
   };
 
-  // Endorsement Shift Snapshot Handler (Triggered from Splash Home Page)
   const handlePerformEndorsement = () => {
     const incomingDoctor = prompt("Enter the name of the incoming Internist on Duty for the next shift:", "Dr. ");
-    if (!incomingDoctor) return; // User cancelled prompt
+    if (!incomingDoctor) return;
 
     const now = new Date();
     const tomorrow = new Date(now);
@@ -324,7 +329,7 @@ export default function App() {
         remarks: formData.remarks || ''
       },
       status: assignedStatus,
-      physician: formData.physician,
+      physician: formData.physician || internistOnDuty,
       isReferral: isReferralSave
     };
 
@@ -334,6 +339,10 @@ export default function App() {
 
   const startEditingClinical = (patient) => {
     setClinicalForm({
+      name: patient.name || '',
+      ageSex: patient.ageSex || '',
+      admissionDate: patient.admissionDate || '',
+      physician: patient.physician || '',
       admittingDiagnosis: patient.admittingDiagnosis || '',
       workingImpression: patient.workingImpression || '',
       currentCondition: patient.endorsement?.currentCondition || '',
@@ -342,6 +351,7 @@ export default function App() {
       remarks: patient.endorsement?.remarks || '',
       status: patient.status || 'Stable'
     });
+    setIsEditingCoreDetails(false); // Default to locked core details
     setIsEditingClinical(true);
   };
 
@@ -351,6 +361,11 @@ export default function App() {
       if (p.id === selectedPatient.id) {
         const updated = {
           ...p,
+          // Update core details only if core toggle is enabled, otherwise keep original values
+          name: isEditingCoreDetails ? clinicalForm.name : p.name,
+          ageSex: isEditingCoreDetails ? clinicalForm.ageSex : p.ageSex,
+          admissionDate: isEditingCoreDetails ? clinicalForm.admissionDate : p.admissionDate,
+          physician: isEditingCoreDetails ? clinicalForm.physician : p.physician,
           admittingDiagnosis: clinicalForm.admittingDiagnosis,
           workingImpression: clinicalForm.workingImpression,
           status: clinicalForm.status,
@@ -367,6 +382,7 @@ export default function App() {
       return p;
     }));
     setIsEditingClinical(false);
+    setIsEditingCoreDetails(false);
   };
 
   const filteredPatients = patients.filter(p => 
@@ -577,7 +593,7 @@ export default function App() {
   if (selectedPatient) {
     return (
       <div style={styles.container}>
-        <button style={styles.backButton} onClick={() => { setSelectedPatient(null); setIsEditingClinical(false); }}>
+        <button style={styles.backButton} onClick={() => { setSelectedPatient(null); setIsEditingClinical(false); setIsEditingCoreDetails(false); }}>
           &larr; Back to Census List
         </button>
 
@@ -597,6 +613,7 @@ export default function App() {
                 onClick={() => {
                   if (isEditingClinical) {
                     setIsEditingClinical(false);
+                    setIsEditingCoreDetails(false);
                   } else {
                     startEditingClinical(selectedPatient);
                   }
@@ -613,8 +630,79 @@ export default function App() {
 
           {isEditingClinical ? (
             <form onSubmit={saveClinicalEdits} style={styles.editFormBox}>
-              <h3 style={{ margin: '0 0 15px 0', color: '#0056b3' }}>Update Clinical Details & Disposition</h3>
-              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                <h3 style={{ margin: 0, color: '#0056b3' }}>Update Clinical Details & Disposition</h3>
+                
+                {/* Separate toggle switch for core fields */}
+                <div style={{ display: 'flex', alignItems: 'center', background: '#e9ecef', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ced4da' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#495057', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                    <input 
+                      type="checkbox" 
+                      checked={isEditingCoreDetails} 
+                      onChange={(e) => setIsEditingCoreDetails(e.target.checked)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    Unlock Name, Age/Sex, Date & Physician
+                  </label>
+                </div>
+              </div>
+
+              {/* Core Details Section (Editable only if toggle is checked) */}
+              <div style={{ background: isEditingCoreDetails ? '#fff3cd' : '#f1f3f5', padding: '12px', borderRadius: '6px', marginBottom: '15px', border: '1px solid', borderColor: isEditingCoreDetails ? '#ffeeba' : '#dee2e6' }}>
+                <p style={{ margin: '0 0 8px 0', fontSize: '11px', fontWeight: 'bold', color: isEditingCoreDetails ? '#856404' : '#6c757d' }}>
+                  {isEditingCoreDetails ? '⚠️ Core Information Unlocked for Editing' : '🔒 Core Information Locked (Toggle above to edit)'}
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '8px' }}>
+                  <div>
+                    <label style={styles.label}>Patient Name</label>
+                    <input 
+                      type="text" 
+                      value={clinicalForm.name} 
+                      onChange={(e) => setClinicalForm({...clinicalForm, name: e.target.value})}
+                      style={styles.input}
+                      disabled={!isEditingCoreDetails}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Age / Sex</label>
+                    <input 
+                      type="text" 
+                      value={clinicalForm.ageSex} 
+                      onChange={(e) => setClinicalForm({...clinicalForm, ageSex: e.target.value})}
+                      style={styles.input}
+                      disabled={!isEditingCoreDetails}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={styles.label}>Admission Date (YYYY-MM-DD)</label>
+                    <input 
+                      type="text" 
+                      value={clinicalForm.admissionDate} 
+                      onChange={(e) => setClinicalForm({...clinicalForm, admissionDate: e.target.value})}
+                      style={styles.input}
+                      disabled={!isEditingCoreDetails}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Attending Physician</label>
+                    <input 
+                      type="text" 
+                      value={clinicalForm.physician} 
+                      onChange={(e) => setClinicalForm({...clinicalForm, physician: e.target.value})}
+                      style={styles.input}
+                      disabled={!isEditingCoreDetails}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div style={{ marginBottom: '12px' }}>
                 <label style={styles.label}>Admitting Diagnosis</label>
                 <input 
@@ -698,7 +786,7 @@ export default function App() {
 
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button type="submit" style={styles.saveClinicalBtn}>Save Changes</button>
-                <button type="button" onClick={() => setIsEditingClinical(false)} style={styles.cancelBtn}>Cancel</button>
+                <button type="button" onClick={() => { setIsEditingClinical(false); setIsEditingCoreDetails(false); }} style={styles.cancelBtn}>Cancel</button>
               </div>
             </form>
           ) : (
