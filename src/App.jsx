@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // --- Patient Modal Component (Self-Contained) ---
 function PatientModal({ room, allRooms, patient, onClose, onSave, onDischarge }) {
@@ -108,9 +108,9 @@ function PatientModal({ room, allRooms, patient, onClose, onSave, onDischarge })
               </div>
             )}
             <div>
-              <label style={styles.label}>Admission Date (YYYY-MM-DD)</label>
+              <label style={styles.label}>Admission Date</label>
               <input 
-                type="text" 
+                type="date" 
                 value={formData.admissionDate} 
                 onChange={(e) => setFormData({...formData, admissionDate: e.target.value})}
                 style={styles.input}
@@ -140,8 +140,11 @@ function PatientModal({ room, allRooms, patient, onClose, onSave, onDischarge })
                 <option value="New Admission">New Admission</option>
                 <option value="Referral">Referral</option>
                 <option value="Stable">Stable</option>
+                <option value="Improving">Improving</option>
                 <option value="Guarded">Guarded</option>
+                <option value="Close Watch">Close Watch</option>
                 <option value="Critical">Critical</option>
+                <option value="MGH">MGH</option>
               </select>
             </div>
           </div>
@@ -206,6 +209,8 @@ export default function App() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   
+  const lastViewedIdRef = useRef(null);
+
   const [currentDateString, setCurrentDateString] = useState(() => {
     return localStorage.getItem('jrrmdh_datespan') || 'September 1 - September 2, 2026';
   });
@@ -320,6 +325,17 @@ export default function App() {
   }, [dischargedArchive]);
 
   const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
+
+  // Scroll back to specific patient row upon returning from detail view
+  useEffect(() => {
+    if (!selectedPatient && lastViewedIdRef.current) {
+      const el = document.getElementById(`patient-row-${lastViewedIdRef.current}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      lastViewedIdRef.current = null;
+    }
+  }, [selectedPatient]);
 
   const fixedRooms = [
     "301", "303-1", "303-2", "303-3", "303-4",
@@ -509,7 +525,7 @@ export default function App() {
       admissionDate: patient.admissionDate || '',
       physician: patient.physician || '',
       admittingDiagnosis: patient.admittingDiagnosis || '',
-      workingImpression: patient.workingImpression || '',
+      workingImpression: patient.workingImpression || patient.admittingDiagnosis || '',
       currentCondition: patient.endorsement?.currentCondition || '',
       diagnostics: patient.endorsement?.diagnostics || '',
       therapeutics: patient.endorsement?.therapeutics || '',
@@ -530,7 +546,6 @@ export default function App() {
           ageSex: isEditingCoreDetails ? clinicalForm.ageSex : p.ageSex,
           admissionDate: isEditingCoreDetails ? clinicalForm.admissionDate : p.admissionDate,
           physician: isEditingCoreDetails ? clinicalForm.physician : p.physician,
-          admittingDiagnosis: clinicalForm.admittingDiagnosis,
           workingImpression: clinicalForm.workingImpression,
           status: clinicalForm.status,
           endorsement: {
@@ -549,10 +564,33 @@ export default function App() {
     setIsEditingCoreDetails(false);
   };
 
+  const statusBadge = (status) => {
+    let bg = '#e2e8f0';
+    let color = '#334155';
+    if (status === 'New Admission') { bg = '#dbeafe'; color = '#1d4ed8'; }
+    else if (status === 'Guarded') { bg = '#ffedd5'; color = '#c2410c'; }
+    else if (status === 'Close Watch') { bg = '#fed7aa'; color = '#9a3412'; }
+    else if (status === 'Critical') { bg = '#fee2e2'; color = '#b91c1c'; }
+    else if (status === 'MGH') { bg = '#dcfce7'; color = '#15803d'; }
+    else if (status === 'Expired') { bg = '#111827'; color = '#ffffff'; }
+    else if (status === 'Stable') { bg = '#f1f5f9'; color = '#475569'; }
+    else if (status === 'Improving') { bg = '#ccfbf1'; color = '#0f766e'; }
+    else if (status === 'Referral') { bg = '#d1fae5'; color = '#047857'; }
+    else if (status === 'Transferred') { bg = '#f3e8ff'; color = '#7e22ce'; }
+    else if (status === 'Absconded') { bg = '#ffe4e6'; color = '#9f1239'; }
+
+    return {
+      background: bg,
+      color: color,
+      padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold'
+    };
+  };
+
   const filteredPatients = patients.filter(p => 
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.wardRoom.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.admittingDiagnosis.toLowerCase().includes(searchQuery.toLowerCase())
+    p.admittingDiagnosis.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.workingImpression && p.workingImpression.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const imPatientsList = filteredPatients.filter(p => !p.isReferral);
@@ -689,7 +727,7 @@ export default function App() {
                             <th style={styles.th}>Room</th>
                             <th style={styles.th}>Patient Name</th>
                             <th style={styles.th}>Age/Sex</th>
-                            <th style={styles.th}>Diagnosis</th>
+                            <th style={styles.th}>Impression / Diagnosis</th>
                             <th style={styles.th}>Status</th>
                             <th style={styles.th}>Endorsement Summary</th>
                           </tr>
@@ -700,8 +738,8 @@ export default function App() {
                               <td style={styles.td}><strong>{sp.wardRoom}</strong></td>
                               <td style={styles.td}>{sp.name}</td>
                               <td style={styles.td}>{sp.ageSex}</td>
-                              <td style={styles.td}>{sp.admittingDiagnosis}</td>
-                              <td style={styles.td}><span style={styles.statusBadge(sp.status)}>{sp.status}</span></td>
+                              <td style={styles.td}>{sp.workingImpression || sp.admittingDiagnosis}</td>
+                              <td style={styles.td}><span style={statusBadge(sp.status)}>{sp.status}</span></td>
                               <td style={styles.td}>
                                 <div style={{ fontSize: '12px', lineHeight: '1.4' }}>
                                   <strong>Cond:</strong> {sp.endorsement?.currentCondition}<br/>
@@ -731,7 +769,12 @@ export default function App() {
   if (selectedPatient) {
     return (
       <div style={styles.container}>
-        <button style={styles.backButton} onClick={() => { setSelectedPatient(null); setIsEditingClinical(false); setIsEditingCoreDetails(false); }}>
+        <button style={styles.backButton} onClick={() => { 
+          lastViewedIdRef.current = selectedPatient.id;
+          setSelectedPatient(null); 
+          setIsEditingClinical(false); 
+          setIsEditingCoreDetails(false); 
+        }}>
           &larr; Back to Census List
         </button>
 
@@ -797,7 +840,7 @@ export default function App() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={styles.label}>Admission Date</label>
-                    <input type="text" value={clinicalForm.admissionDate} onChange={(e) => setClinicalForm({...clinicalForm, admissionDate: e.target.value})} style={styles.input} disabled={!isEditingCoreDetails} required />
+                    <input type="date" value={clinicalForm.admissionDate} onChange={(e) => setClinicalForm({...clinicalForm, admissionDate: e.target.value})} style={styles.input} disabled={!isEditingCoreDetails} required />
                   </div>
                   <div>
                     <label style={styles.label}>Attending Physician</label>
@@ -806,9 +849,16 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Admitting Diagnosis is fixed / read-only as requested */}
               <div style={{ marginBottom: '14px' }}>
-                <label style={styles.label}>Admitting Diagnosis</label>
-                <input type="text" value={clinicalForm.admittingDiagnosis} onChange={(e) => setClinicalForm({...clinicalForm, admittingDiagnosis: e.target.value})} style={styles.input} required />
+                <label style={styles.label}>Admitting Diagnosis <span style={{ fontWeight: 'normal', color: '#64748b' }}>(Fixed / Permanent Record)</span></label>
+                <input type="text" value={selectedPatient.admittingDiagnosis} style={{ ...styles.input, backgroundColor: '#f1f5f9', color: '#475569' }} disabled />
+              </div>
+
+              {/* Working Impression is editable */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={styles.label}>Working Impression / Current Assessment</label>
+                <input type="text" value={clinicalForm.workingImpression} onChange={(e) => setClinicalForm({...clinicalForm, workingImpression: e.target.value})} style={styles.input} required />
               </div>
 
               <div style={{ marginBottom: '14px' }}>
@@ -819,6 +869,7 @@ export default function App() {
                   <option value="Stable">Stable</option>
                   <option value="Improving">Improving</option>
                   <option value="Guarded">Guarded</option>
+                  <option value="Close Watch">Close Watch</option>
                   <option value="Critical">Critical</option>
                   <option value="MGH">MGH (May Go Home)</option>
                   <option value="Transferred">Transferred</option>
@@ -868,7 +919,7 @@ export default function App() {
                 )}
               </div>
 
-              <p style={{ fontSize: '15px' }}><strong>Status / Disposition:</strong> <span style={styles.statusBadge(selectedPatient.status)}>{selectedPatient.status}</span></p>
+              <p style={{ fontSize: '15px' }}><strong>Status / Disposition:</strong> <span style={statusBadge(selectedPatient.status)}>{selectedPatient.status}</span></p>
             </>
           )}
 
@@ -1010,13 +1061,13 @@ export default function App() {
           <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No IM inpatients found.</p>
         ) : (
           imPatientsList.map(patient => (
-            <div key={patient.id} style={styles.patientRow} onClick={() => setSelectedPatient(patient)}>
+            <div key={patient.id} id={`patient-row-${patient.id}`} style={styles.patientRow} onClick={() => setSelectedPatient(patient)}>
               <div>
                 <h4 style={{ margin: '0 0 4px 0', color: '#1e3a8a', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
-                <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.admittingDiagnosis} (Day {calculateHospitalDay(patient.admissionDate)})</p>
+                <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis} (Day {calculateHospitalDay(patient.admissionDate)})</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={styles.statusBadge(patient.status)}>{patient.status}</span>
+                <span style={statusBadge(patient.status)}>{patient.status}</span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
                   <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
@@ -1036,13 +1087,13 @@ export default function App() {
           <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No active referrals.</p>
         ) : (
           referralPatientsList.map(patient => (
-            <div key={patient.id} style={{ ...styles.patientRow, borderLeftColor: '#10b981' }} onClick={() => setSelectedPatient(patient)}>
+            <div key={patient.id} id={`patient-row-${patient.id}`} style={{ ...styles.patientRow, borderLeftColor: '#10b981' }} onClick={() => setSelectedPatient(patient)}>
               <div>
                 <h4 style={{ margin: '0 0 4px 0', color: '#059669', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
-                <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.admittingDiagnosis}</p>
+                <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis}</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={styles.statusBadge(patient.status)}>{patient.status}</span>
+                <span style={statusBadge(patient.status)}>{patient.status}</span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
                   <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
@@ -1122,10 +1173,5 @@ const styles = {
   cancelBtn: { background: '#64748b', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' },
   clearRoomButton: { background: '#ef4444', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', marginTop: '24px' },
   smallClearBtn: { background: '#fee2e2', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
-  orderArrowBtn: { background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#334155', width: '24px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold', padding: 0 },
-  statusBadge: (status) => ({
-    background: status === 'MGH' ? '#e0f2fe' : status === 'New Admission' ? '#dbeafe' : status === 'Referral' ? '#d1fae5' : status === 'Improving' ? '#d1fae5' : status === 'Critical' ? '#fee2e2' : '#fef3c7',
-    color: status === 'MGH' ? '#0369a1' : status === 'New Admission' ? '#1d4ed8' : status === 'Referral' ? '#047857' : status === 'Improving' ? '#047857' : status === 'Critical' ? '#b91c1c' : '#b45309',
-    padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold'
-  })
+  orderArrowBtn: { background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#334155', width: '24px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold', padding: 0 }
 };
