@@ -221,6 +221,10 @@ export default function App() {
   const [isEditingInternist, setIsEditingInternist] = useState(false);
   const [tempInternist, setTempInternist] = useState('');
 
+  // Reversion States
+  const [showRevertBox, setShowRevertBox] = useState(false);
+  const [revertPassword, setRevertPassword] = useState('');
+
   useEffect(() => {
     localStorage.setItem('jrrmdh_datespan', currentDateString);
   }, [currentDateString]);
@@ -400,6 +404,15 @@ export default function App() {
     const incomingDoctor = prompt("Enter the name of the incoming Internist on Duty for the next shift:", "Dr. ");
     if (!incomingDoctor) return;
 
+    // Save backup state for reversion if accidental
+    const previousStateBackup = {
+      patients: [...patients],
+      internistOnDuty: internistOnDuty,
+      currentDateString: currentDateString,
+      timestamp: Date.now()
+    };
+    localStorage.setItem('jrrmdh_previous_state', JSON.stringify(previousStateBackup));
+
     const now = new Date();
     const tomorrow = new Date(now);
     tomorrow.setDate(now.getDate() + 1);
@@ -422,6 +435,36 @@ export default function App() {
     setInternistOnDuty(incomingDoctor);
     setCurrentDateString(dutyPeriodSpan);
     alert(`Shift successfully endorsed to ${incomingDoctor}!\nDuty Period updated to [ ${dutyPeriodSpan} ]. Snapshot saved to archives.`);
+  };
+
+  const handleRevertEndorsement = (e) => {
+    e.preventDefault();
+    if (revertPassword !== 'IMjprizal000') {
+      alert("Incorrect password.");
+      return;
+    }
+    const savedPrevState = localStorage.getItem('jrrmdh_previous_state');
+    if (!savedPrevState) {
+      alert("No previous duty span backup found to revert to.");
+      return;
+    }
+    try {
+      const prevState = JSON.parse(savedPrevState);
+      setPatients(prevState.patients);
+      setInternistOnDuty(prevState.internistOnDuty);
+      setCurrentDateString(prevState.currentDateString);
+
+      // Remove the accidental snapshot from archive if present
+      setDischargedArchive(prev => prev.filter(rec => !rec.isSnapshot || rec.id < prevState.timestamp));
+
+      localStorage.removeItem('jrrmdh_previous_state');
+      setRevertPassword('');
+      setShowRevertBox(false);
+      alert(`Successfully reverted back to previous duty span: [ ${prevState.currentDateString} ] with Dr. ${prevState.internistOnDuty}.`);
+    } catch (err) {
+      console.error(err);
+      alert("Error restoring previous state.");
+    }
   };
 
   const openNewAdmissionModal = () => {
@@ -741,13 +784,46 @@ export default function App() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '15px' }}>
             <button style={styles.enterButton} onClick={() => setCurrentView('census')}>
               Enter Daily Census Dashboard
             </button>
             <button style={styles.endorseSplashButton} onClick={handlePerformEndorsement}>
               🔄 Endorse Shift (New Duty Span & Handover)
             </button>
+          </div>
+
+          {/* Password-Protected Reversion Section */}
+          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '15px', textAlign: 'left' }}>
+            {!showRevertBox ? (
+              <button 
+                onClick={() => setShowRevertBox(true)} 
+                style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
+              >
+                ⚠️ Accidental endorsement? Click here to revert...
+              </button>
+            ) : (
+              <form onSubmit={handleRevertEndorsement} style={{ background: '#fef2f2', padding: '14px', borderRadius: '8px', border: '1px solid #fca5a5' }}>
+                <h4 style={{ margin: '0 0 6px 0', color: '#991b1b', fontSize: '14px' }}>Revert Accidental Shift Endorsement</h4>
+                <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#7f1d1d' }}>Enter password to restore previous duty span and census data:</p>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input 
+                    type="password" 
+                    placeholder="Enter password..." 
+                    value={revertPassword}
+                    onChange={(e) => setRevertPassword(e.target.value)}
+                    style={{ ...styles.input, fontSize: '13px', padding: '6px 10px' }}
+                    required
+                  />
+                  <button type="submit" style={{ background: '#dc2626', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    Revert
+                  </button>
+                  <button type="button" onClick={() => { setShowRevertBox(false); setRevertPassword(''); }} style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       </div>
