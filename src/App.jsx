@@ -311,9 +311,12 @@ export default function App() {
     return [
       {
         id: 101,
-        name: 'Reyes, Pedro (Archived Individual Record)',
+        name: 'Reyes, Pedro',
         ageSex: '58 / M',
+        admissionDate: '2026-08-01',
+        dischargeDate: '2026-08-05',
         admissionPeriod: 'August 1 - August 5, 2026',
+        physician: 'Dr. Maria Santos',
         finalImpression: 'Acute Gastroenteritis, resolved with oral hydration and antibiotics.',
         isSnapshot: false
       }
@@ -324,9 +327,11 @@ export default function App() {
     localStorage.setItem('jrrmdh_archive', JSON.stringify(dischargedArchive));
   }, [dischargedArchive]);
 
-  // Archive Search & Interactivity States
-  const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
-  const [selectedSnapshotOption, setSelectedSnapshotOption] = useState(null); // null, or specific snapshot object
+  // Two Separate Archive Search States
+  const [dutyDateQuery, setDutyDateQuery] = useState('');
+  const [selectedSnapshotOption, setSelectedSnapshotOption] = useState(null); // null or snapshot object
+  
+  const [detailsQuery, setDetailsQuery] = useState('');
 
   // Scroll back to specific patient row upon returning from detail view
   useEffect(() => {
@@ -470,7 +475,10 @@ export default function App() {
           id: Date.now(),
           name: patientToArchive.name,
           ageSex: patientToArchive.ageSex,
+          admissionDate: patientToArchive.admissionDate,
+          dischargeDate: todayStr,
           admissionPeriod: `${patientToArchive.admissionDate} - ${todayStr}`,
+          physician: patientToArchive.physician || internistOnDuty,
           finalImpression: patientToArchive.workingImpression || patientToArchive.admittingDiagnosis,
           isSnapshot: false
         };
@@ -598,12 +606,15 @@ export default function App() {
   const imPatientsList = filteredPatients.filter(p => !p.isReferral);
   const referralPatientsList = filteredPatients.filter(p => p.isReferral);
 
-  // Archive Search & Filtering Logic
-  const matchingSnapshots = dischargedArchive.filter(rec => rec.isSnapshot && rec.admissionPeriod.toLowerCase().includes(archiveSearchQuery.toLowerCase()));
+  // Archive Filtering Logic for Section 1 (Duty Date) & Section 2 (Details)
+  const matchingSnapshots = dischargedArchive.filter(rec => rec.isSnapshot && rec.admissionPeriod.toLowerCase().includes(dutyDateQuery.toLowerCase()));
+  
   const matchingPatientRecords = dischargedArchive.filter(rec => !rec.isSnapshot && (
-    rec.name.toLowerCase().includes(archiveSearchQuery.toLowerCase()) ||
-    rec.admissionPeriod.toLowerCase().includes(archiveSearchQuery.toLowerCase()) ||
-    rec.finalImpression.toLowerCase().includes(archiveSearchQuery.toLowerCase())
+    rec.name.toLowerCase().includes(detailsQuery.toLowerCase()) ||
+    (rec.admissionDate && rec.admissionDate.toLowerCase().includes(detailsQuery.toLowerCase())) ||
+    (rec.dischargeDate && rec.dischargeDate.toLowerCase().includes(detailsQuery.toLowerCase())) ||
+    (rec.physician && rec.physician.toLowerCase().includes(detailsQuery.toLowerCase())) ||
+    (rec.finalImpression && rec.finalImpression.toLowerCase().includes(detailsQuery.toLowerCase()))
   ));
 
   if (currentView === 'splash') {
@@ -681,124 +692,151 @@ export default function App() {
     return (
       <div style={styles.container}>
         <div style={styles.headerRow}>
-          <h2>Historical Archive & Duty Search Hub</h2>
-          <button style={styles.homeButton} onClick={() => { setCurrentView('splash'); setSelectedSnapshotOption(null); setArchiveSearchQuery(''); }}>Home Splash</button>
+          <h2>Historical Archive & Search Hub</h2>
+          <button style={styles.homeButton} onClick={() => { setCurrentView('splash'); setSelectedSnapshotOption(null); setDutyDateQuery(''); setDetailsQuery(''); }}>Home Splash</button>
         </div>
 
-        <div style={{ position: 'relative', width: '100%', marginBottom: '20px' }}>
-          <input 
-            type="text" 
-            placeholder="Search by duty date, patient name, admission date, physician, or working impression..." 
-            value={archiveSearchQuery}
-            onChange={(e) => {
-              setArchiveSearchQuery(e.target.value);
-              setSelectedSnapshotOption(null); // Reset choice on new search typing
-            }}
-            style={{ ...styles.searchBar, marginBottom: 0, paddingRight: archiveSearchQuery ? '35px' : '14px' }}
-            autoFocus
-          />
-          {archiveSearchQuery && (
-            <button 
-              onClick={() => { setArchiveSearchQuery(''); setSelectedSnapshotOption(null); }}
-              style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#666', cursor: 'pointer' }}
-            >
-              &times;
-            </button>
+        {/* SECTION 1: Duty Date Search */}
+        <div style={styles.archiveSectionCard}>
+          <h3 style={{ margin: '0 0 8px 0', color: '#1e3a8a', fontSize: '16px' }}>1) Duty Date Search</h3>
+          <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#64748b' }}>Search by duty date span to look up complete shift snapshots.</p>
+          
+          <div style={{ position: 'relative', width: '100%' }}>
+            <input 
+              type="text" 
+              placeholder="e.g., September 1, August 28..." 
+              value={dutyDateQuery}
+              onChange={(e) => {
+                setDutyDateQuery(e.target.value);
+                setSelectedSnapshotOption(null); // Reset choice on new search typing
+              }}
+              style={{ ...styles.searchBar, marginBottom: 0, paddingRight: dutyDateQuery ? '35px' : '14px' }}
+            />
+            {dutyDateQuery && (
+              <button 
+                onClick={() => { setDutyDateQuery(''); setSelectedSnapshotOption(null); }}
+                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#666', cursor: 'pointer' }}
+              >
+                &times;
+              </button>
+            )}
+          </div>
+
+          {dutyDateQuery.trim() && (
+            <div style={{ marginTop: '15px' }}>
+              {matchingSnapshots.length > 0 && !selectedSnapshotOption && (
+                <div style={{ background: '#fef3c7', border: '1px solid #fde68a', padding: '14px 16px', borderRadius: '8px', marginBottom: '15px' }}>
+                  <h4 style={{ margin: '0 0 6px 0', color: '#b45309', fontSize: '15px' }}>Multiple Duty Shift Records Found for "{dutyDateQuery}"</h4>
+                  <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#78350f' }}>Since duty dates are recorded by duty span (2 shifts per date), please choose which specific duty span you wish to view:</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {matchingSnapshots.map(snap => (
+                      <button 
+                        key={snap.id} 
+                        onClick={() => setSelectedSnapshotOption(snap)}
+                        style={{ background: '#ffffff', border: '1px solid #f59e0b', padding: '10px 14px', borderRadius: '6px', textAlign: 'left', cursor: 'pointer', fontWeight: 'bold', color: '#92400e', fontSize: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                      >
+                        <span>📦 {snap.name}</span>
+                        <span style={{ background: '#fef3c7', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>{snap.admissionPeriod}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedSnapshotOption && (
+                <div style={{ background: '#fff', padding: '16px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <h4 style={{ margin: 0, color: '#059669', fontSize: '16px' }}>📦 {selectedSnapshotOption.name}</h4>
+                    <button onClick={() => setSelectedSnapshotOption(null)} style={{ background: '#e2e8f0', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>&larr; Choose Other Duty Span</button>
+                  </div>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#475569' }}><strong>Duty Span:</strong> {selectedSnapshotOption.admissionPeriod} | {selectedSnapshotOption.finalImpression}</p>
+
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={styles.archiveTable}>
+                      <thead>
+                        <tr style={styles.tableHeaderRow}>
+                          <th style={styles.th}>Room</th>
+                          <th style={styles.th}>Patient Name</th>
+                          <th style={styles.th}>Age/Sex</th>
+                          <th style={styles.th}>Impression / Diagnosis</th>
+                          <th style={styles.th}>Status</th>
+                          <th style={styles.th}>Endorsement Summary</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedSnapshotOption.snapshotPatients?.map(sp => (
+                          <tr key={sp.id} style={styles.tableRow}>
+                            <td style={styles.td}><strong>{sp.wardRoom}</strong></td>
+                            <td style={styles.td}>{sp.name}</td>
+                            <td style={styles.td}>{sp.ageSex}</td>
+                            <td style={styles.td}>{sp.workingImpression || sp.admittingDiagnosis}</td>
+                            <td style={styles.td}><span style={statusBadge(sp.status)}>{sp.status}</span></td>
+                            <td style={styles.td}>
+                              <div style={{ fontSize: '12px', lineHeight: '1.4' }}>
+                                <strong>Cond:</strong> {sp.endorsement?.currentCondition}<br/>
+                                <strong>Labs:</strong> {sp.endorsement?.diagnostics}<br/>
+                                <strong>Meds:</strong> {sp.endorsement?.therapeutics}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {matchingSnapshots.length === 0 && (
+                <p style={{ textAlign: 'center', padding: '15px', color: '#666', background: '#f8fafc', borderRadius: '8px', fontSize: '14px', margin: 0 }}>No duty shift snapshots found matching "{dutyDateQuery}".</p>
+              )}
+            </div>
           )}
         </div>
 
-        {!archiveSearchQuery.trim() ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#64748b', background: '#fff', borderRadius: '10px', border: '1px dashed #cbd5e1' }}>
-            <p style={{ fontSize: '16px', fontWeight: '600', margin: '0 0 6px 0' }}>Archive Search Ready</p>
-            <p style={{ fontSize: '14px', margin: 0 }}>Type a duty date span, patient name, physician, or condition in the search bar above to look up historical records.</p>
+        {/* SECTION 2: Details Search */}
+        <div style={styles.archiveSectionCard}>
+          <h3 style={{ margin: '0 0 8px 0', color: '#1e3a8a', fontSize: '16px' }}>2) Patient Details Search</h3>
+          <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#64748b' }}>Search by Patient Name, Date of Admission, Date of Discharge, Attending Physician, or Working Impression / Condition.</p>
+          
+          <div style={{ position: 'relative', width: '100%' }}>
+            <input 
+              type="text" 
+              placeholder="e.g., Dela Cruz, August 1, Dr. Santos, Pneumonia..." 
+              value={detailsQuery}
+              onChange={(e) => setDetailsQuery(e.target.value)}
+              style={{ ...styles.searchBar, marginBottom: 0, paddingRight: detailsQuery ? '35px' : '14px' }}
+            />
+            {detailsQuery && (
+              <button 
+                onClick={() => setDetailsQuery('')}
+                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#666', cursor: 'pointer' }}
+              >
+                &times;
+              </button>
+            )}
           </div>
-        ) : (
-          <div>
-            {/* Duty Date / Snapshot Selection Prompt if multiple duty spans match */}
-            {matchingSnapshots.length > 0 && !selectedSnapshotOption && (
-              <div style={{ background: '#fef3c7', border: '1px solid #fde68a', padding: '16px 20px', borderRadius: '10px', marginBottom: '20px' }}>
-                <h4 style={{ margin: '0 0 8px 0', color: '#b45309', fontSize: '16px' }}>Multiple Duty Shift Records Found for "{archiveSearchQuery}"</h4>
-                <p style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#78350f' }}>Since duty dates are recorded by duty span (multiple shifts per date), please choose which specific duty span you wish to view:</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {matchingSnapshots.map(snap => (
-                    <button 
-                      key={snap.id} 
-                      onClick={() => setSelectedSnapshotOption(snap)}
-                      style={{ background: '#ffffff', border: '1px solid #f59e0b', padding: '10px 14px', borderRadius: '6px', textAlign: 'left', cursor: 'pointer', fontWeight: 'bold', color: '#92400e', fontSize: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                    >
-                      <span>📦 {snap.name}</span>
-                      <span style={{ background: '#fef3c7', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>{snap.admissionPeriod}</span>
-                    </button>
+
+          {detailsQuery.trim() && (
+            <div style={{ marginTop: '15px' }}>
+              {matchingPatientRecords.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {matchingPatientRecords.map(record => (
+                    <div key={record.id} style={{ background: '#fff', padding: '16px', borderRadius: '8px', border: '1px solid #cbd5e1', borderLeft: '4px solid #0284c7' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                        <h4 style={{ margin: 0, color: '#1e3a8a', fontSize: '16px' }}>{record.name} <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'normal' }}>({record.ageSex})</span></h4>
+                        <span style={styles.periodBadge}>Admitted: {record.admissionDate || 'N/A'} | Discharged: {record.dischargeDate || 'N/A'}</span>
+                      </div>
+                      <p style={{ margin: '4px 0', fontSize: '14px', color: '#334155' }}><strong>Attending Physician:</strong> {record.physician || 'Not specified'}</p>
+                      <p style={{ margin: '4px 0', fontSize: '14px', color: '#334155' }}><strong>Working Impression / Condition:</strong> {record.finalImpression}</p>
+                    </div>
                   ))}
                 </div>
-              </div>
-            )}
-
-            {/* Display Selected Snapshot Table */}
-            {selectedSnapshotOption && (
-              <div style={{ marginBottom: '25px', background: '#fff', padding: '20px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h3 style={{ margin: 0, color: '#059669', fontSize: '18px' }}>📦 {selectedSnapshotOption.name}</h3>
-                  <button onClick={() => setSelectedSnapshotOption(null)} style={{ background: '#e2e8f0', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>&larr; Choose Other Duty Span</button>
-                </div>
-                <p style={{ margin: '0 0 14px 0', fontSize: '14px', color: '#475569' }}><strong>Duty Span:</strong> {selectedSnapshotOption.admissionPeriod} | {selectedSnapshotOption.finalImpression}</p>
-
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={styles.archiveTable}>
-                    <thead>
-                      <tr style={styles.tableHeaderRow}>
-                        <th style={styles.th}>Room</th>
-                        <th style={styles.th}>Patient Name</th>
-                        <th style={styles.th}>Age/Sex</th>
-                        <th style={styles.th}>Impression / Diagnosis</th>
-                        <th style={styles.th}>Status</th>
-                        <th style={styles.th}>Endorsement Summary</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedSnapshotOption.snapshotPatients?.map(sp => (
-                        <tr key={sp.id} style={styles.tableRow}>
-                          <td style={styles.td}><strong>{sp.wardRoom}</strong></td>
-                          <td style={styles.td}>{sp.name}</td>
-                          <td style={styles.td}>{sp.ageSex}</td>
-                          <td style={styles.td}>{sp.workingImpression || sp.admittingDiagnosis}</td>
-                          <td style={styles.td}><span style={statusBadge(sp.status)}>{sp.status}</span></td>
-                          <td style={styles.td}>
-                            <div style={{ fontSize: '12px', lineHeight: '1.4' }}>
-                              <strong>Cond:</strong> {sp.endorsement?.currentCondition}<br/>
-                              <strong>Labs:</strong> {sp.endorsement?.diagnostics}<br/>
-                              <strong>Meds:</strong> {sp.endorsement?.therapeutics}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Display Matching Individual Patient Archived Records */}
-            {matchingPatientRecords.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '16px', color: '#1e3a8a', margin: '10px 0 4px 0' }}>Matching Individual Patient Records ({matchingPatientRecords.length})</h3>
-                {matchingPatientRecords.map(record => (
-                  <div key={record.id} style={{ ...styles.patientRow, borderLeftColor: '#64748b', display: 'block', background: '#fff' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                      <h4 style={{ margin: '0 0 4px 0', color: '#1e3a8a', fontSize: '16px' }}>{record.name} <span style={{ fontSize: '13px', color: '#64748b' }}>({record.ageSex})</span></h4>
-                      <span style={styles.periodBadge}>{record.admissionPeriod}</span>
-                    </div>
-                    <p style={{ margin: '6px 0 0 0', fontSize: '14px', color: '#475569' }}><strong>Impression:</strong> {record.finalImpression}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {matchingSnapshots.length === 0 && matchingPatientRecords.length === 0 && (
-              <p style={{ textAlign: 'center', padding: '25px', color: '#666', background: '#fff', borderRadius: '10px' }}>No archived records found matching "{archiveSearchQuery}".</p>
-            )}
-          </div>
-        )}
+              ) : (
+                <p style={{ textAlign: 'center', padding: '15px', color: '#666', background: '#f8fafc', borderRadius: '8px', fontSize: '14px', margin: 0 }}>No archived patient records found matching "{detailsQuery}".</p>
+              )}
+            </div>
+          )}
+        </div>
 
         <div style={{ marginTop: '25px' }}>
           <button style={styles.backButton} onClick={() => setCurrentView('census')}>&larr; Back to Active Census</button>
@@ -890,13 +928,11 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Admitting Diagnosis is fixed / read-only as requested */}
               <div style={{ marginBottom: '14px' }}>
                 <label style={styles.label}>Admitting Diagnosis <span style={{ fontWeight: 'normal', color: '#64748b' }}>(Fixed / Permanent Record)</span></label>
                 <input type="text" value={selectedPatient.admittingDiagnosis} style={{ ...styles.input, backgroundColor: '#f1f5f9', color: '#475569' }} disabled />
               </div>
 
-              {/* Working Impression is editable */}
               <div style={{ marginBottom: '14px' }}>
                 <label style={styles.label}>Working Impression / Current Assessment</label>
                 <input type="text" value={clinicalForm.workingImpression} onChange={(e) => setClinicalForm({...clinicalForm, workingImpression: e.target.value})} style={styles.input} required />
@@ -1029,7 +1065,7 @@ export default function App() {
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>+ Admit</button>
           <button style={styles.referralButton} onClick={openAddReferralModal}>+ Referral</button>
-          <button style={styles.archiveNavBtnHeader} onClick={() => { setCurrentView('archive'); setArchiveSearchQuery(''); setSelectedSnapshotOption(null); }}>Archive</button>
+          <button style={styles.archiveNavBtnHeader} onClick={() => { setCurrentView('archive'); setDutyDateQuery(''); setDetailsQuery(''); setSelectedSnapshotOption(null); }}>Archive</button>
           <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>Home</button>
         </div>
       </div>
@@ -1187,6 +1223,7 @@ const styles = {
   transferButton: { background: '#f59e0b', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   editButton: { background: '#0891b2', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   searchBar: { width: '100%', padding: '12px 16px', fontSize: '15px', border: '1px solid #cbd5e1', borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box', outline: 'none', background: '#ffffff' },
+  archiveSectionCard: { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', marginBottom: '20px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' },
   roomGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px', marginTop: '10px', maxHeight: '280px', overflowY: 'auto', padding: '8px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#ffffff' },
   roomCard: { padding: '10px', borderRadius: '8px', border: '1px solid', transition: 'all 0.2s ease' },
   listContainer: { display: 'flex', flexDirection: 'column', gap: '12px' },
