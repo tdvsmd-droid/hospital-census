@@ -327,11 +327,17 @@ export default function App() {
     localStorage.setItem('jrrmdh_archive', JSON.stringify(dischargedArchive));
   }, [dischargedArchive]);
 
-  // Two Separate Archive Search States
+  // Section 1: Duty Date Search State
   const [dutyDateQuery, setDutyDateQuery] = useState('');
-  const [selectedSnapshotOption, setSelectedSnapshotOption] = useState(null); // null or snapshot object
-  
-  const [detailsQuery, setDetailsQuery] = useState('');
+  const [selectedSnapshotOption, setSelectedSnapshotOption] = useState(null);
+
+  // Section 2: Patient Details Search States (Tabbed)
+  const [activeDetailTab, setActiveDetailTab] = useState('name'); // 'name', 'admissionDate', 'dischargeDate', 'physician', 'impression'
+  const [nameQuery, setNameQuery] = useState('');
+  const [admissionDateQuery, setAdmissionDateQuery] = useState('');
+  const [dischargeDateQuery, setDischargeDateQuery] = useState('');
+  const [physicianQuery, setPhysicianQuery] = useState('');
+  const [impressionQuery, setImpressionQuery] = useState('');
 
   // Scroll back to specific patient row upon returning from detail view
   useEffect(() => {
@@ -606,16 +612,39 @@ export default function App() {
   const imPatientsList = filteredPatients.filter(p => !p.isReferral);
   const referralPatientsList = filteredPatients.filter(p => p.isReferral);
 
-  // Archive Filtering Logic for Section 1 (Duty Date) & Section 2 (Details)
+  // Archive Filtering Logic
   const matchingSnapshots = dischargedArchive.filter(rec => rec.isSnapshot && rec.admissionPeriod.toLowerCase().includes(dutyDateQuery.toLowerCase()));
   
-  const matchingPatientRecords = dischargedArchive.filter(rec => !rec.isSnapshot && (
-    rec.name.toLowerCase().includes(detailsQuery.toLowerCase()) ||
-    (rec.admissionDate && rec.admissionDate.toLowerCase().includes(detailsQuery.toLowerCase())) ||
-    (rec.dischargeDate && rec.dischargeDate.toLowerCase().includes(detailsQuery.toLowerCase())) ||
-    (rec.physician && rec.physician.toLowerCase().includes(detailsQuery.toLowerCase())) ||
-    (rec.finalImpression && rec.finalImpression.toLowerCase().includes(detailsQuery.toLowerCase()))
-  ));
+  // Tabbed Patient Details Filtering Logic
+  const matchingPatientRecords = dischargedArchive.filter(rec => {
+    if (rec.isSnapshot) return false;
+    if (activeDetailTab === 'name') {
+      return nameQuery.trim() === '' || rec.name.toLowerCase().includes(nameQuery.toLowerCase());
+    }
+    if (activeDetailTab === 'admissionDate') {
+      return admissionDateQuery.trim() === '' || (rec.admissionDate && rec.admissionDate.toLowerCase().includes(admissionDateQuery.toLowerCase()));
+    }
+    if (activeDetailTab === 'dischargeDate') {
+      return dischargeDateQuery.trim() === '' || (rec.dischargeDate && rec.dischargeDate.toLowerCase().includes(dischargeDateQuery.toLowerCase()));
+    }
+    if (activeDetailTab === 'physician') {
+      return physicianQuery.trim() === '' || (rec.physician && rec.physician.toLowerCase().includes(physicianQuery.toLowerCase()));
+    }
+    if (activeDetailTab === 'impression') {
+      return impressionQuery.trim() === '' || (rec.finalImpression && rec.finalImpression.toLowerCase().includes(impressionQuery.toLowerCase()));
+    }
+    return false;
+  });
+
+  const clearAllArchiveSearches = () => {
+    setDutyDateQuery('');
+    setSelectedSnapshotOption(null);
+    setNameQuery('');
+    setAdmissionDateQuery('');
+    setDischargeDateQuery('');
+    setPhysicianQuery('');
+    setImpressionQuery('');
+  };
 
   if (currentView === 'splash') {
     return (
@@ -693,12 +722,12 @@ export default function App() {
       <div style={styles.container}>
         <div style={styles.headerRow}>
           <h2>Historical Archive & Search Hub</h2>
-          <button style={styles.homeButton} onClick={() => { setCurrentView('splash'); setSelectedSnapshotOption(null); setDutyDateQuery(''); setDetailsQuery(''); }}>Home Splash</button>
+          <button style={styles.homeButton} onClick={() => { setCurrentView('splash'); clearAllArchiveSearches(); }}>Home Splash</button>
         </div>
 
         {/* SECTION 1: Duty Date Search */}
         <div style={styles.archiveSectionCard}>
-          <h3 style={{ margin: '0 0 8px 0', color: '#1e3a8a', fontSize: '16px' }}>1) Duty Date Search</h3>
+          <h3 style={{ margin: '0 0 6px 0', color: '#1e3a8a', fontSize: '16px' }}>1) Duty Date Search</h3>
           <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#64748b' }}>Search by duty date span to look up complete shift snapshots.</p>
           
           <div style={{ position: 'relative', width: '100%' }}>
@@ -708,7 +737,7 @@ export default function App() {
               value={dutyDateQuery}
               onChange={(e) => {
                 setDutyDateQuery(e.target.value);
-                setSelectedSnapshotOption(null); // Reset choice on new search typing
+                setSelectedSnapshotOption(null);
               }}
               style={{ ...styles.searchBar, marginBottom: 0, paddingRight: dutyDateQuery ? '35px' : '14px' }}
             />
@@ -793,32 +822,132 @@ export default function App() {
           )}
         </div>
 
-        {/* SECTION 2: Details Search */}
+        {/* SECTION 2: Patient Details Search (Tabbed) */}
         <div style={styles.archiveSectionCard}>
-          <h3 style={{ margin: '0 0 8px 0', color: '#1e3a8a', fontSize: '16px' }}>2) Patient Details Search</h3>
-          <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#64748b' }}>Search by Patient Name, Date of Admission, Date of Discharge, Attending Physician, or Working Impression / Condition.</p>
+          <h3 style={{ margin: '0 0 6px 0', color: '#1e3a8a', fontSize: '16px' }}>2) Patient Details Search</h3>
+          <p style={{ margin: '0 0 14px 0', fontSize: '13px', color: '#64748b' }}>Select a category tab to search archived patient records independently.</p>
           
-          <div style={{ position: 'relative', width: '100%' }}>
-            <input 
-              type="text" 
-              placeholder="e.g., Dela Cruz, August 1, Dr. Santos, Pneumonia..." 
-              value={detailsQuery}
-              onChange={(e) => setDetailsQuery(e.target.value)}
-              style={{ ...styles.searchBar, marginBottom: 0, paddingRight: detailsQuery ? '35px' : '14px' }}
-            />
-            {detailsQuery && (
-              <button 
-                onClick={() => setDetailsQuery('')}
-                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#666', cursor: 'pointer' }}
-              >
-                &times;
-              </button>
+          {/* Tab Buttons */}
+          <div style={styles.tabContainer}>
+            <button 
+              style={activeDetailTab === 'name' ? styles.tabActive : styles.tabInactive}
+              onClick={() => setActiveDetailTab('name')}
+            >
+              👤 Patient's Name
+            </button>
+            <button 
+              style={activeDetailTab === 'admissionDate' ? styles.tabActive : styles.tabInactive}
+              onClick={() => setActiveDetailTab('admissionDate')}
+            >
+              📅 Date of Admission
+            </button>
+            <button 
+              style={activeDetailTab === 'dischargeDate' ? styles.tabActive : styles.tabInactive}
+              onClick={() => setActiveDetailTab('dischargeDate')}
+            >
+              🏁 Date of Discharge
+            </button>
+            <button 
+              style={activeDetailTab === 'physician' ? styles.tabActive : styles.tabInactive}
+              onClick={() => setActiveDetailTab('physician')}
+            >
+              👨‍⚕️ Attending Physician
+            </button>
+            <button 
+              style={activeDetailTab === 'impression' ? styles.tabActive : styles.tabInactive}
+              onClick={() => setActiveDetailTab('impression')}
+            >
+              🩺 Working Impression / Condition
+            </button>
+          </div>
+
+          {/* Active Tab Input Section */}
+          <div style={{ position: 'relative', width: '100%', marginTop: '10px' }}>
+            {activeDetailTab === 'name' && (
+              <>
+                <input 
+                  type="text" 
+                  placeholder="Search by patient name (e.g., Dela Cruz)..." 
+                  value={nameQuery}
+                  onChange={(e) => setNameQuery(e.target.value)}
+                  style={{ ...styles.searchBar, marginBottom: 0, paddingRight: nameQuery ? '35px' : '14px' }}
+                />
+                {nameQuery && (
+                  <button onClick={() => setNameQuery('')} style={styles.clearInputBtn}>&times;</button>
+                )}
+              </>
+            )}
+
+            {activeDetailTab === 'admissionDate' && (
+              <>
+                <input 
+                  type="text" 
+                  placeholder="Search by admission date (e.g., 2026-08-01, August 1)..." 
+                  value={admissionDateQuery}
+                  onChange={(e) => setAdmissionDateQuery(e.target.value)}
+                  style={{ ...styles.searchBar, marginBottom: 0, paddingRight: admissionDateQuery ? '35px' : '14px' }}
+                />
+                {admissionDateQuery && (
+                  <button onClick={() => setAdmissionDateQuery('')} style={styles.clearInputBtn}>&times;</button>
+                )}
+              </>
+            )}
+
+            {activeDetailTab === 'dischargeDate' && (
+              <>
+                <input 
+                  type="text" 
+                  placeholder="Search by discharge/clearance date (e.g., 2026-08-05)..." 
+                  value={dischargeDateQuery}
+                  onChange={(e) => setDischargeDateQuery(e.target.value)}
+                  style={{ ...styles.searchBar, marginBottom: 0, paddingRight: dischargeDateQuery ? '35px' : '14px' }}
+                />
+                {dischargeDateQuery && (
+                  <button onClick={() => setDischargeDateQuery('')} style={styles.clearInputBtn}>&times;</button>
+                )}
+              </>
+            )}
+
+            {activeDetailTab === 'physician' && (
+              <>
+                <input 
+                  type="text" 
+                  placeholder="Search by attending physician (e.g., Dr. Santos)..." 
+                  value={physicianQuery}
+                  onChange={(e) => setPhysicianQuery(e.target.value)}
+                  style={{ ...styles.searchBar, marginBottom: 0, paddingRight: physicianQuery ? '35px' : '14px' }}
+                />
+                {physicianQuery && (
+                  <button onClick={() => setPhysicianQuery('')} style={styles.clearInputBtn}>&times;</button>
+                )}
+              </>
+            )}
+
+            {activeDetailTab === 'impression' && (
+              <>
+                <input 
+                  type="text" 
+                  placeholder="Search by working impression or condition (e.g., Pneumonia)..." 
+                  value={impressionQuery}
+                  onChange={(e) => setImpressionQuery(e.target.value)}
+                  style={{ ...styles.searchBar, marginBottom: 0, paddingRight: impressionQuery ? '35px' : '14px' }}
+                />
+                {impressionQuery && (
+                  <button onClick={() => setImpressionQuery('')} style={styles.clearInputBtn}>&times;</button>
+                )}
+              </>
             )}
           </div>
 
-          {detailsQuery.trim() && (
-            <div style={{ marginTop: '15px' }}>
-              {matchingPatientRecords.length > 0 ? (
+          {/* Tab Search Results Output */}
+          <div style={{ marginTop: '15px' }}>
+            {((activeDetailTab === 'name' && nameQuery.trim()) ||
+              (activeDetailTab === 'admissionDate' && admissionDateQuery.trim()) ||
+              (activeDetailTab === 'dischargeDate' && dischargeDateQuery.trim()) ||
+              (activeDetailTab === 'physician' && physicianQuery.trim()) ||
+              (activeDetailTab === 'impression' && impressionQuery.trim())) ? (
+              
+              matchingPatientRecords.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {matchingPatientRecords.map(record => (
                     <div key={record.id} style={{ background: '#fff', padding: '16px', borderRadius: '8px', border: '1px solid #cbd5e1', borderLeft: '4px solid #0284c7' }}>
@@ -832,10 +961,12 @@ export default function App() {
                   ))}
                 </div>
               ) : (
-                <p style={{ textAlign: 'center', padding: '15px', color: '#666', background: '#f8fafc', borderRadius: '8px', fontSize: '14px', margin: 0 }}>No archived patient records found matching "{detailsQuery}".</p>
-              )}
-            </div>
-          )}
+                <p style={{ textAlign: 'center', padding: '15px', color: '#666', background: '#f8fafc', borderRadius: '8px', fontSize: '14px', margin: 0 }}>No archived patient records found matching your search criteria.</p>
+              )
+            ) : (
+              <p style={{ textAlign: 'center', padding: '15px', color: '#94a3b8', background: '#f8fafc', borderRadius: '8px', fontSize: '13px', margin: 0, fontStyle: 'italic' }}>Type a query above to search records by {activeDetailTab === 'name' ? "Patient's Name" : activeDetailTab === 'admissionDate' ? 'Date of Admission' : activeDetailTab === 'dischargeDate' ? 'Date of Discharge' : activeDetailTab === 'physician' ? 'Attending Physician' : 'Working Impression / Condition'}.</p>
+            )}
+          </div>
         </div>
 
         <div style={{ marginTop: '25px' }}>
@@ -1065,7 +1196,7 @@ export default function App() {
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>+ Admit</button>
           <button style={styles.referralButton} onClick={openAddReferralModal}>+ Referral</button>
-          <button style={styles.archiveNavBtnHeader} onClick={() => { setCurrentView('archive'); setDutyDateQuery(''); setDetailsQuery(''); setSelectedSnapshotOption(null); }}>Archive</button>
+          <button style={styles.archiveNavBtnHeader} onClick={() => { setCurrentView('archive'); clearAllArchiveSearches(); }}>Archive</button>
           <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>Home</button>
         </div>
       </div>
@@ -1224,6 +1355,10 @@ const styles = {
   editButton: { background: '#0891b2', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   searchBar: { width: '100%', padding: '12px 16px', fontSize: '15px', border: '1px solid #cbd5e1', borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box', outline: 'none', background: '#ffffff' },
   archiveSectionCard: { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', marginBottom: '20px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' },
+  tabContainer: { display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' },
+  tabActive: { background: '#2563eb', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' },
+  tabInactive: { background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' },
+  clearInputBtn: { position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#666', cursor: 'pointer' },
   roomGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px', marginTop: '10px', maxHeight: '280px', overflowY: 'auto', padding: '8px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#ffffff' },
   roomCard: { padding: '10px', borderRadius: '8px', border: '1px solid', transition: 'all 0.2s ease' },
   listContainer: { display: 'flex', flexDirection: 'column', gap: '12px' },
