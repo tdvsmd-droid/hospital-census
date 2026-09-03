@@ -612,6 +612,13 @@ export default function App() {
   const imPatientsList = filteredPatients.filter(p => !p.isReferral);
   const referralPatientsList = filteredPatients.filter(p => p.isReferral);
 
+  // Home Splash Metrics Calculation
+  const splashActiveCount = patients.filter(p => p.wardRoom !== 'Pending Room Assignment' && !p.isReferral).length;
+  const splashPendingRoomCount = patients.filter(p => p.wardRoom === 'Pending Room Assignment').length;
+  const splashForDischargeCount = patients.filter(p => p.status === 'MGH' || p.status === 'For Discharge').length;
+  const splashDischargedCount = dischargedArchive.filter(rec => !rec.isSnapshot).length;
+  const splashReferralCount = patients.filter(p => p.isReferral || isReferralLocation(p.wardRoom)).length;
+
   // Archive Filtering Logic
   const matchingSnapshots = dischargedArchive.filter(rec => rec.isSnapshot && rec.admissionPeriod.toLowerCase().includes(dutyDateQuery.toLowerCase()));
   
@@ -699,9 +706,39 @@ export default function App() {
             </div>
           </div>
 
-          <div style={styles.badgeContainer}>
-            <span style={styles.badge}>Active Inpatients: {patients.length}</span>
-            <span style={styles.badgeArchive}>Archived Records: {dischargedArchive.length}</span>
+          {/* Updated Splash Count Panels */}
+          <div style={styles.splashMetricsSection}>
+            <div style={styles.splashMetricBox}>
+              <h4 style={styles.splashMetricHeader}>Inpatient Counts</h4>
+              <div style={styles.splashMetricGrid}>
+                <div style={styles.splashMetricItem}>
+                  <span style={styles.splashMetricNum}>{splashActiveCount}</span>
+                  <span style={styles.splashMetricLabel}>Active</span>
+                </div>
+                <div style={styles.splashMetricItem}>
+                  <span style={styles.splashMetricNum}>{splashPendingRoomCount}</span>
+                  <span style={styles.splashMetricLabel}>Pending Room</span>
+                </div>
+                <div style={styles.splashMetricItem}>
+                  <span style={styles.splashMetricNum}>{splashForDischargeCount}</span>
+                  <span style={styles.splashMetricLabel}>For Discharge</span>
+                </div>
+                <div style={styles.splashMetricItem}>
+                  <span style={styles.splashMetricNum}>{splashDischargedCount}</span>
+                  <span style={styles.splashMetricLabel}>Discharged (Cleared)</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.splashMetricBox}>
+              <h4 style={styles.splashMetricHeader}>Referral Counts</h4>
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '8px 0' }}>
+                <div style={styles.splashMetricItemSingle}>
+                  <span style={styles.splashMetricNum}>{splashReferralCount}</span>
+                  <span style={styles.splashMetricLabel}>Total Referrals</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1329,20 +1366,28 @@ export default function App() {
 
 const styles = {
   splashContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif', padding: '20px' },
-  splashCard: { background: '#ffffff', padding: '40px', borderRadius: '16px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)', maxWidth: '600px', width: '100%' },
+  splashCard: { background: '#ffffff', padding: '40px', borderRadius: '16px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)', maxWidth: '620px', width: '100%' },
   hospitalTitle: { color: '#1e293b', margin: '0 0 4px 0', fontSize: '22px', fontWeight: '800', letterSpacing: '-0.02em' },
   deptTitle: { color: '#0284c7', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' },
-  portalSubtitle: { color: '#64748b', fontSize: '13px', fontWeight: '500', marginBottom: '24px' },
-  splashInfoBox: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px', textAlign: 'left' },
-  infoRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', fontSize: '14px' },
+  portalSubtitle: { color: '#64748b', fontSize: '13px', fontWeight: '500', marginBottom: '20px' },
+  splashInfoBox: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 18px', marginBottom: '20px', textAlign: 'left' },
+  infoRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: '14px' },
   infoLabel: { fontWeight: '600', color: '#334155' },
   infoValue: { color: '#0284c7', fontWeight: '700' },
   physicianInput: { padding: '6px 10px', fontSize: '13px', border: '1px solid #cbd5e1', borderRadius: '6px', outline: 'none' },
   savePhysicianBtn: { background: '#10b981', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' },
   editPhysicianBtn: { background: 'none', border: 'none', color: '#0284c7', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline', padding: 0, fontWeight: 'bold' },
-  badgeContainer: { display: 'flex', justifyContent: 'center', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' },
-  badge: { background: '#e0f2fe', color: '#0369a1', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold' },
-  badgeArchive: { background: '#fef3c7', color: '#b45309', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold' },
+  
+  // New splash metrics card layouts
+  splashMetricsSection: { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' },
+  splashMetricBox: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px', textAlign: 'left' },
+  splashMetricHeader: { margin: '0 0 10px 0', fontSize: '14px', fontWeight: '700', color: '#1e3a8a', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' },
+  splashMetricGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', textAlign: 'center' },
+  splashMetricItem: { background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center' },
+  splashMetricItemSingle: { background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '140px' },
+  splashMetricNum: { fontSize: '18px', fontWeight: '800', color: '#0284c7', lineHeight: '1.2' },
+  splashMetricLabel: { fontSize: '11px', fontWeight: '600', color: '#64748b', marginTop: '2px', textAlign: 'center' },
+
   enterButton: { background: '#2563eb', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   endorseSplashButton: { background: '#059669', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   admitNewButton: { background: '#2563eb', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
