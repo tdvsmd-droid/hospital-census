@@ -404,15 +404,6 @@ export default function App() {
     const incomingDoctor = prompt("Enter the name of the incoming Internist on Duty for the next shift:", "Dr. ");
     if (!incomingDoctor) return;
 
-    // Save backup state for reversion if accidental
-    const previousStateBackup = {
-      patients: [...patients],
-      internistOnDuty: internistOnDuty,
-      currentDateString: currentDateString,
-      timestamp: Date.now()
-    };
-    localStorage.setItem('jrrmdh_previous_state', JSON.stringify(previousStateBackup));
-
     const now = new Date();
     const tomorrow = new Date(now);
     tomorrow.setDate(now.getDate() + 1);
@@ -428,7 +419,9 @@ export default function App() {
       admissionPeriod: dutyPeriodSpan,
       finalImpression: `Endorsed from ${internistOnDuty} to ${incomingDoctor}. Total active census: ${patients.length} patients.`,
       isSnapshot: true,
-      snapshotPatients: [...patients]
+      snapshotPatients: [...patients],
+      previousInternist: internistOnDuty,
+      previousDateString: currentDateString
     };
 
     setDischargedArchive(prev => [snapshotRecord, ...prev]);
@@ -443,27 +436,49 @@ export default function App() {
       alert("Incorrect password.");
       return;
     }
-    const savedPrevState = localStorage.getItem('jrrmdh_previous_state');
-    if (!savedPrevState) {
-      alert("No previous duty span backup found to revert to.");
+
+    // Look for the most recent shift snapshot in the discharged archive
+    const latestSnapshotIndex = dischargedArchive.findIndex(rec => rec.isSnapshot);
+    
+    if (latestSnapshotIndex === -1) {
+      alert("No previous duty shift snapshot found in the archive to revert to.");
       return;
     }
+
+    const targetSnapshot = dischargedArchive[latestSnapshotIndex];
+
     try {
-      const prevState = JSON.parse(savedPrevState);
-      setPatients(prevState.patients);
-      setInternistOnDuty(prevState.internistOnDuty);
-      setCurrentDateString(prevState.currentDateString);
+      // Restore patients from the snapshot record
+      if (targetSnapshot.snapshotPatients) {
+        setPatients(targetSnapshot.snapshotPatients);
+      }
 
-      // Remove the accidental snapshot from archive if present
-      setDischargedArchive(prev => prev.filter(rec => !rec.isSnapshot || rec.id < prevState.timestamp));
+      // Restore previous internist if saved, or parse it from the snapshot name
+      if (targetSnapshot.previousInternist) {
+        setInternistOnDuty(targetSnapshot.previousInternist);
+      } else {
+        const nameMatch = targetSnapshot.name.match(/\((.*?) ->/);
+        if (nameMatch && nameMatch[1]) {
+          setInternistOnDuty(nameMatch[1]);
+        }
+      }
 
-      localStorage.removeItem('jrrmdh_previous_state');
+      // Restore previous date span if saved, or use admissionPeriod
+      if (targetSnapshot.previousDateString) {
+        setCurrentDateString(targetSnapshot.previousDateString);
+      } else if (targetSnapshot.admissionPeriod) {
+        // Fallback or keep current if needed
+      }
+
+      // Remove this consumed snapshot from the archive list so it doesn't duplicate
+      setDischargedArchive(prev => prev.filter((_, idx) => idx !== latestSnapshotIndex));
+
       setRevertPassword('');
       setShowRevertBox(false);
-      alert(`Successfully reverted back to previous duty span: [ ${prevState.currentDateString} ] with Dr. ${prevState.internistOnDuty}.`);
+      alert(`Successfully reverted back to the previous shift snapshot from archive!`);
     } catch (err) {
       console.error(err);
-      alert("Error restoring previous state.");
+      alert("Error restoring state from archive snapshot.");
     }
   };
 
@@ -805,7 +820,7 @@ export default function App() {
             ) : (
               <form onSubmit={handleRevertEndorsement} style={{ background: '#fef2f2', padding: '14px', borderRadius: '8px', border: '1px solid #fca5a5' }}>
                 <h4 style={{ margin: '0 0 6px 0', color: '#991b1b', fontSize: '14px' }}>Revert Accidental Shift Endorsement</h4>
-                <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#7f1d1d' }}>Enter password to restore previous duty span and census data:</p>
+                <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#7f1d1d' }}>Enter password to restore previous duty span and census data from archive:</p>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input 
                     type="password" 
@@ -1506,5 +1521,5 @@ const styles = {
   cancelBtn: { background: '#64748b', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' },
   clearRoomButton: { background: '#ef4444', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', marginTop: '24px' },
   smallClearBtn: { background: '#fee2e2', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
-  orderArrowBtn: { background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#334155', width: '24px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold', padding: 0 }
+  orderArrowBtn: { background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#334155', width: '24px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold', padding: '0' }
 };
