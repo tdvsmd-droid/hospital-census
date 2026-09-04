@@ -437,7 +437,6 @@ export default function App() {
       return;
     }
 
-    // Look for the most recent shift snapshot in the discharged archive
     const latestSnapshotIndex = dischargedArchive.findIndex(rec => rec.isSnapshot);
     
     if (latestSnapshotIndex === -1) {
@@ -448,12 +447,10 @@ export default function App() {
     const targetSnapshot = dischargedArchive[latestSnapshotIndex];
 
     try {
-      // Restore patients from the snapshot record
       if (targetSnapshot.snapshotPatients) {
         setPatients(targetSnapshot.snapshotPatients);
       }
 
-      // Restore previous internist if saved, or parse it from the snapshot name
       if (targetSnapshot.previousInternist) {
         setInternistOnDuty(targetSnapshot.previousInternist);
       } else {
@@ -463,14 +460,12 @@ export default function App() {
         }
       }
 
-      // Restore previous date span if saved, or use admissionPeriod
       if (targetSnapshot.previousDateString) {
         setCurrentDateString(targetSnapshot.previousDateString);
-      } else if (targetSnapshot.admissionPeriod) {
-        // Fallback or keep current if needed
+      } else {
+        setCurrentDateString(targetSnapshot.admissionPeriod);
       }
 
-      // Remove this consumed snapshot from the archive list so it doesn't duplicate
       setDischargedArchive(prev => prev.filter((_, idx) => idx !== latestSnapshotIndex));
 
       setRevertPassword('');
@@ -670,17 +665,14 @@ export default function App() {
   const imPatientsList = filteredPatients.filter(p => !p.isReferral);
   const referralPatientsList = filteredPatients.filter(p => p.isReferral);
 
-  // Home Splash Metrics Calculation
   const splashActiveCount = patients.filter(p => p.wardRoom !== 'Pending Room Assignment' && !p.isReferral).length;
   const splashPendingRoomCount = patients.filter(p => p.wardRoom === 'Pending Room Assignment').length;
   const splashForDischargeCount = patients.filter(p => p.status === 'MGH' || p.status === 'For Discharge').length;
   const splashDischargedCount = dischargedArchive.filter(rec => !rec.isSnapshot).length;
   const splashReferralCount = patients.filter(p => p.isReferral || isReferralLocation(p.wardRoom)).length;
 
-  // Archive Filtering Logic
   const matchingSnapshots = dischargedArchive.filter(rec => rec.isSnapshot && rec.admissionPeriod.toLowerCase().includes(dutyDateQuery.toLowerCase()));
   
-  // Tabbed Patient Details Filtering Logic
   const matchingPatientRecords = dischargedArchive.filter(rec => {
     if (rec.isSnapshot) return false;
     if (activeDetailTab === 'name') {
@@ -764,7 +756,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Updated Splash Count Panels */}
           <div style={styles.splashMetricsSection}>
             <div style={styles.splashMetricBox}>
               <h4 style={styles.splashMetricHeader}>Inpatient Counts</h4>
@@ -808,7 +799,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Password-Protected Reversion Section */}
           <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '15px', textAlign: 'left' }}>
             {!showRevertBox ? (
               <button 
@@ -853,7 +843,6 @@ export default function App() {
           <button style={styles.homeButton} onClick={() => { setCurrentView('splash'); clearAllArchiveSearches(); }}>Home Splash</button>
         </div>
 
-        {/* SECTION 1: Duty Date Search */}
         <div style={styles.archiveSectionCard}>
           <h3 style={{ margin: '0 0 6px 0', color: '#1e3a8a', fontSize: '16px' }}>1) Duty Date Search</h3>
           <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#64748b' }}>Search by duty date span to look up complete shift snapshots.</p>
@@ -950,12 +939,10 @@ export default function App() {
           )}
         </div>
 
-        {/* SECTION 2: Patient Details Search (Tabbed) */}
         <div style={styles.archiveSectionCard}>
           <h3 style={{ margin: '0 0 6px 0', color: '#1e3a8a', fontSize: '16px' }}>2) Patient Details Search</h3>
           <p style={{ margin: '0 0 14px 0', fontSize: '13px', color: '#64748b' }}>Select a category tab to search archived patient records independently.</p>
           
-          {/* Tab Buttons */}
           <div style={styles.tabContainer}>
             <button 
               style={activeDetailTab === 'name' ? styles.tabActive : styles.tabInactive}
@@ -989,7 +976,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Active Tab Input Section */}
           <div style={{ position: 'relative', width: '100%', marginTop: '10px' }}>
             {activeDetailTab === 'name' && (
               <>
@@ -1067,7 +1053,6 @@ export default function App() {
             )}
           </div>
 
-          {/* Tab Search Results Output */}
           <div style={{ marginTop: '15px' }}>
             {((activeDetailTab === 'name' && nameQuery.trim()) ||
               (activeDetailTab === 'admissionDate' && admissionDateQuery.trim()) ||
@@ -1469,7 +1454,6 @@ const styles = {
   savePhysicianBtn: { background: '#10b981', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' },
   editPhysicianBtn: { background: 'none', border: 'none', color: '#0284c7', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline', padding: 0, fontWeight: 'bold' },
   
-  // New splash metrics card layouts
   splashMetricsSection: { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' },
   splashMetricBox: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px', textAlign: 'left' },
   splashMetricHeader: { margin: '0 0 10px 0', fontSize: '14px', fontWeight: '700', color: '#1e3a8a', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' },
@@ -1516,7 +1500,7 @@ const styles = {
   modalCloseBtn: { background: 'none', border: 'none', fontSize: '24px', fontWeight: 'bold', color: '#64748b', cursor: 'pointer' },
   label: { display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' },
   input: { width: '100%', padding: '10px 12px', fontSize: '14px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box', outline: 'none', background: '#fff' },
-  textarea: { width: '100%', padding: '10px 12px', fontSize: '14px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box', resize: 'vertical', outline: 'none', background: 'fff' },
+  textarea: { width: '100%', padding: '10px 12px', fontSize: '14px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box', resize: 'vertical', outline: 'none', background: '#fff' },
   saveClinicalBtn: { background: '#10b981', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' },
   cancelBtn: { background: '#64748b', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' },
   clearRoomButton: { background: '#ef4444', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', marginTop: '24px' },
