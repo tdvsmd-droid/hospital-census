@@ -211,6 +211,9 @@ export default function App() {
   
   const lastViewedIdRef = useRef(null);
 
+  // Track if we are currently editing an archived snapshot instead of the live shift
+  const [activeSnapshotId, setActiveSnapshotId] = useState(null);
+
   const [currentDateString, setCurrentDateString] = useState(() => {
     return localStorage.getItem('jrrmdh_datespan') || 'September 1 - September 2, 2026';
   });
@@ -396,6 +399,11 @@ export default function App() {
   };
 
   const handlePerformEndorsement = () => {
+    if (activeSnapshotId) {
+      alert("Please exit or save your current historical edit session before performing a new forward endorsement.");
+      return;
+    }
+
     const confirmEndorsement = window.confirm(
       "Are you sure you want to endorse the shift? This will generate a duty snapshot, archive current data, and advance the duty span."
     );
@@ -463,11 +471,14 @@ export default function App() {
 
       if (targetSnapshot.previousDateString) {
         setCurrentDateString(targetSnapshot.previousDateString);
+        localStorage.setItem('jrrmdh_datespan', targetSnapshot.previousDateString);
       } else {
         setCurrentDateString(targetSnapshot.admissionPeriod);
+        localStorage.setItem('jrrmdh_datespan', targetSnapshot.admissionPeriod);
       }
 
       setDischargedArchive(prev => prev.filter((_, idx) => idx !== latestSnapshotIndex));
+      setActiveSnapshotId(null);
 
       setRevertPassword('');
       setShowRevertBox(false);
@@ -476,6 +487,56 @@ export default function App() {
       console.error(err);
       alert("Error restoring state from archive snapshot.");
     }
+  };
+
+  const handleLoadSnapshotForEditing = (snapshot) => {
+    const confirmLoad = window.confirm(
+      `Do you want to load the duty span [ ${snapshot.admissionPeriod} ] into the active workspace for editing? You can add admissions, discharge, and save changes back to the archive.`
+    );
+    if (!confirmLoad) return;
+
+    setCurrentDateString(snapshot.admissionPeriod);
+    if (snapshot.previousInternist) {
+      setInternistOnDuty(snapshot.previousInternist);
+    } else {
+      const nameMatch = snapshot.name.match(/\((.*?) ->/);
+      if (nameMatch && nameMatch[1]) {
+        setInternistOnDuty(nameMatch[1]);
+      }
+    }
+    if (snapshot.snapshotPatients) {
+      setPatients(snapshot.snapshotPatients);
+    }
+    
+    setActiveSnapshotId(snapshot.id);
+    setCurrentView('census');
+    alert(`Loaded duty span [ ${snapshot.admissionPeriod} ] for editing. Make your changes and click 'Save Changes to Archive' when finished.`);
+  };
+
+  const handleSaveArchivedShiftChanges = () => {
+    if (!activeSnapshotId) {
+      alert("No historical snapshot is currently loaded for editing.");
+      return;
+    }
+
+    const confirmSave = window.confirm("Save modifications back to this historical archive snapshot?");
+    if (!confirmSave) return;
+
+    setDischargedArchive(prev => prev.map(item => {
+      if (item.id === activeSnapshotId) {
+        return {
+          ...item,
+          admissionPeriod: currentDateString,
+          snapshotPatients: [...patients],
+          finalImpression: `Updated historical shift (${internistOnDuty}). Total active census: ${patients.length} patients.`
+        };
+      }
+      return item;
+    }));
+
+    setActiveSnapshotId(null);
+    alert("Historical shift changes successfully saved to the archive!");
+    setCurrentView('archive');
   };
 
   const openNewAdmissionModal = () => {
@@ -845,8 +906,8 @@ export default function App() {
         </div>
 
         <div style={styles.archiveSectionCard}>
-          <h3 style={{ margin: '0 0 6px 0', color: '#1e3a8a', fontSize: '16px' }}>1) Duty Date Search</h3>
-          <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#64748b' }}>Search by duty date span to look up complete shift snapshots.</p>
+          <h3 style={{ margin: '0 0 6px 0', color: '#1e3a8a', fontSize: '16px' }}>1) Duty Date Search & Historical Editing</h3>
+          <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#64748b' }}>Search by duty date span to look up complete shift snapshots or load them into the active workspace to edit past admissions.</p>
           
           <div style={{ position: 'relative', width: '100%' }}>
             <input 
@@ -874,17 +935,24 @@ export default function App() {
               {matchingSnapshots.length > 0 && !selectedSnapshotOption && (
                 <div style={{ background: '#fef3c7', border: '1px solid #fde68a', padding: '14px 16px', borderRadius: '8px', marginBottom: '15px' }}>
                   <h4 style={{ margin: '0 0 6px 0', color: '#b45309', fontSize: '15px' }}>Multiple Duty Shift Records Found for "{dutyDateQuery}"</h4>
-                  <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#78350f' }}>Since duty dates are recorded by duty span (2 shifts per date), please choose which specific duty span you wish to view:</p>
+                  <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#78350f' }}>Please choose which specific duty span you wish to view or edit:</p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {matchingSnapshots.map(snap => (
-                      <button 
-                        key={snap.id} 
-                        onClick={() => setSelectedSnapshotOption(snap)}
-                        style={{ background: '#ffffff', border: '1px solid #f59e0b', padding: '10px 14px', borderRadius: '6px', textAlign: 'left', cursor: 'pointer', fontWeight: 'bold', color: '#92400e', fontSize: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                      >
-                        <span>📦 {snap.name}</span>
-                        <span style={{ background: '#fef3c7', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>{snap.admissionPeriod}</span>
-                      </button>
+                      <div key={snap.id} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <button 
+                          onClick={() => setSelectedSnapshotOption(snap)}
+                          style={{ flex: 1, background: '#ffffff', border: '1px solid #f59e0b', padding: '10px 14px', borderRadius: '6px', textAlign: 'left', cursor: 'pointer', fontWeight: 'bold', color: '#92400e', fontSize: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                        >
+                          <span>📦 {snap.name}</span>
+                          <span style={{ background: '#fef3c7', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>{snap.admissionPeriod}</span>
+                        </button>
+                        <button
+                          onClick={() => handleLoadSnapshotForEditing(snap)}
+                          style={{ background: '#d97706', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap' }}
+                        >
+                          ✏️ Edit This Shift
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -892,9 +960,17 @@ export default function App() {
 
               {selectedSnapshotOption && (
                 <div style={{ background: '#fff', padding: '16px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
                     <h4 style={{ margin: 0, color: '#059669', fontSize: '16px' }}>📦 {selectedSnapshotOption.name}</h4>
-                    <button onClick={() => setSelectedSnapshotOption(null)} style={{ background: '#e2e8f0', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>&larr; Choose Other Duty Span</button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button 
+                        onClick={() => handleLoadSnapshotForEditing(selectedSnapshotOption)}
+                        style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                      >
+                        ✏️ Load & Edit Full Shift Span
+                      </button>
+                      <button onClick={() => setSelectedSnapshotOption(null)} style={{ background: '#e2e8f0', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>&larr; Choose Other Duty Span</button>
+                    </div>
                   </div>
                   <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#475569' }}><strong>Duty Span:</strong> {selectedSnapshotOption.admissionPeriod} | {selectedSnapshotOption.finalImpression}</p>
 
@@ -1305,6 +1381,33 @@ export default function App() {
 
   return (
     <div style={styles.container}>
+      {activeSnapshotId && (
+        <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', padding: '12px 16px', borderRadius: '8px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <span style={{ color: '#b45309', fontWeight: 'bold', fontSize: '13px' }}>
+            ⚠️ Editing Historical Duty Span: {currentDateString} ({internistOnDuty})
+          </span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button 
+              onClick={handleSaveArchivedShiftChanges}
+              style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
+            >
+              Save Changes to Archive & Exit
+            </button>
+            <button 
+              onClick={() => {
+                if (window.confirm("Discard changes and return to archive?")) {
+                  setActiveSnapshotId(null);
+                  setCurrentView('archive');
+                }
+              }}
+              style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={styles.headerRow}>
         <h2 style={{ margin: 0, fontSize: '20px', color: '#1e3a8a' }}>IM on Duty: <span style={{ color: '#0284c7' }}>{internistOnDuty}</span></h2>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
