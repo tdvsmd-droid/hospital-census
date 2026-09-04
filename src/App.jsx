@@ -427,6 +427,7 @@ export default function App() {
     setDischargedArchive(prev => [snapshotRecord, ...prev]);
     setInternistOnDuty(incomingDoctor);
     setCurrentDateString(dutyPeriodSpan);
+    localStorage.setItem('jrrmdh_datespan', dutyPeriodSpan);
     alert(`Shift successfully endorsed to ${incomingDoctor}!\nDuty Period updated to [ ${dutyPeriodSpan} ]. Snapshot saved to archives.`);
   };
 
