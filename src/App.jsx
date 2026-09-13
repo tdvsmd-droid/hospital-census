@@ -453,94 +453,6 @@ export default function App() {
     setDragOverPatientId(null);
   };
 
-  // Automated Referral-to-Inpatient Transfer Handler
-  const handleAutomatedTransfer = (patientId, e) => {
-    if (e) e.stopPropagation();
-    
-    // Determine currently occupied fixed rooms
-    const occupiedRooms = new Set(
-      patients
-        .filter(p => !p.isReferral && p.wardRoom !== 'Pending Room Assignment')
-        .map(p => p.wardRoom.toLowerCase())
-    );
-
-    // Find the first available vacant fixed room
-    const availableRoom = fixedRooms.find(room => !occupiedRooms.has(room.toLowerCase()));
-
-    if (!availableRoom) {
-      alert("Automated Transfer Failed: No vacant fixed rooms available right now. All beds are currently occupied.");
-      return;
-    }
-
-    const targetPatient = patients.find(p => p.id === patientId);
-    const confirmTransfer = window.confirm(
-      `Automated Transfer: Assign available room [ ${availableRoom} ] to referral "${targetPatient ? targetPatient.name : 'Patient'}" and convert to official inpatient?`
-    );
-    if (!confirmTransfer) return;
-
-    setPatients(prev => prev.map(p => {
-      if (p.id === patientId) {
-        const updated = {
-          ...p,
-          wardRoom: availableRoom,
-          isReferral: false,
-          status: 'New Admission'
-        };
-        // If we are currently viewing this patient in detail view, update selectedPatient too
-        if (selectedPatient && selectedPatient.id === patientId) {
-          setSelectedPatient(updated);
-        }
-        return updated;
-      }
-      return p;
-    }));
-
-    alert(`Successfully transferred referral to room ${availableRoom} as an official inpatient!`);
-  };
-
-  // Batch Auto-Transfer for all pending referrals
-  const handleBatchAutoTransfer = () => {
-    const referralList = patients.filter(p => p.isReferral);
-    if (referralList.length === 0) {
-      alert("No referrals available to transfer.");
-      return;
-    }
-
-    let currentPatients = [...patients];
-    let transferredCount = 0;
-
-    for (let refPatient of referralList) {
-      const occupiedRooms = new Set(
-        currentPatients
-          .filter(p => !p.isReferral && p.wardRoom !== 'Pending Room Assignment')
-          .map(p => p.wardRoom.toLowerCase())
-      );
-      const availableRoom = fixedRooms.find(room => !occupiedRooms.has(room.toLowerCase()));
-
-      if (!availableRoom) break; // Out of vacant rooms
-
-      currentPatients = currentPatients.map(p => {
-        if (p.id === refPatient.id) {
-          return {
-            ...p,
-            wardRoom: availableRoom,
-            isReferral: false,
-            status: 'New Admission'
-          };
-        }
-        return p;
-      });
-      transferredCount++;
-    }
-
-    if (transferredCount > 0) {
-      setPatients(currentPatients);
-      alert(`Automated Batch Transfer Complete: Successfully transferred ${transferredCount} referral(s) to newly assigned available beds.`);
-    } else {
-      alert("Automated Batch Transfer Failed: No vacant beds available to accommodate pending referrals.");
-    }
-  };
-
   const handlePerformEndorsement = () => {
     if (activeSnapshotId) {
       alert("Please exit or save your current historical edit session before performing a new forward endorsement.");
@@ -1401,11 +1313,6 @@ export default function App() {
               <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Attending Physician:</strong> {selectedPatient.physician || 'Not specified'}</p>
             </div>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-              {isReferralPatient && (
-                <button style={styles.autoTransferCardBtn} onClick={(e) => handleAutomatedTransfer(selectedPatient.id, e)} title="Automatically assign first available vacant bed">
-                  ⚡ Auto-Transfer
-                </button>
-              )}
               <button style={styles.transferButton} onClick={openTransferModal}>
                 {selectedPatient.wardRoom === 'Pending Room Assignment' ? 'Assign Room/Bed' : 'Transfer Bed'}
               </button>
@@ -1752,11 +1659,6 @@ export default function App() {
         <h3 style={{ fontSize: '16px', color: '#059669', margin: 0 }}>
           External Department Referrals ({referralPatientsList.length})
         </h3>
-        {referralPatientsList.length > 0 && (
-          <button style={styles.autoBatchBtn} onClick={handleBatchAutoTransfer} title="Automatically assign available vacant beds to all pending referrals">
-            ⚡ Auto-Transfer All Pending Referrals
-          </button>
-        )}
       </div>
 
       <div style={styles.listContainer}>
@@ -1771,9 +1673,6 @@ export default function App() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={statusBadge(patient.status)}>{patient.status}</span>
-                <button style={styles.autoTransferCardBtn} onClick={(e) => handleAutomatedTransfer(patient.id, e)} title="Automatically assign first available vacant bed">
-                  ⚡ Auto-Transfer
-                </button>
                 <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
               </div>
             </div>
@@ -1860,7 +1759,5 @@ const styles = {
   cancelBtn: { background: '#64748b', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' },
   clearRoomButton: { background: '#ef4444', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', marginTop: '24px' },
   smallClearBtn: { background: '#fee2e2', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
-  autoTransferCardBtn: { background: '#d1fae5', color: '#047857', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' },
-  autoBatchBtn: { background: '#059669', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   orderArrowBtn: { background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#334155', width: '24px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold', padding: '0' }
 };
