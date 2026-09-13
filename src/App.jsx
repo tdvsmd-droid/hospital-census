@@ -228,10 +228,6 @@ export default function App() {
   const [showRevertBox, setShowRevertBox] = useState(false);
   const [revertPassword, setRevertPassword] = useState('');
 
-  // Drag and drop reordering state
-  const [draggedPatientId, setDraggedPatientId] = useState(null);
-  const [dragOverPatientId, setDragOverPatientId] = useState(null);
-
   useEffect(() => {
     localStorage.setItem('jrrmdh_datespan', currentDateString);
   }, [currentDateString]);
@@ -409,66 +405,6 @@ export default function App() {
       
       return isRef ? [...otherList, ...updatedSub] : [...updatedSub, ...otherList];
     });
-  };
-
-  // Drag and Drop Handlers
-  const handleDragStart = (e, id) => {
-    setDraggedPatientId(id);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', id);
-  };
-
-  const handleDragOver = (e, id) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragOverPatientId !== id) {
-      setDragOverPatientId(id);
-    }
-  };
-
-  const handleDragLeave = (e, id) => {
-    if (dragOverPatientId === id) {
-      setDragOverPatientId(null);
-    }
-  };
-
-  const handleDrop = (e, targetId) => {
-    e.preventDefault();
-    setDragOverPatientId(null);
-    if (draggedPatientId === null || draggedPatientId === targetId) return;
-
-    setPatients(prev => {
-      const imList = prev.filter(p => !p.isReferral);
-      const refList = prev.filter(p => p.isReferral);
-
-      const oldImIndex = imList.findIndex(p => p.id === draggedPatientId);
-      const newImIndex = imList.findIndex(p => p.id === targetId);
-
-      if (oldImIndex !== -1 && newImIndex !== -1) {
-        const updatedImList = [...imList];
-        const [movedItem] = updatedImList.splice(oldImIndex, 1);
-        updatedImList.splice(newImIndex, 0, movedItem);
-        return [...updatedImList, ...refList];
-      }
-
-      const oldRefIndex = refList.findIndex(p => p.id === draggedPatientId);
-      const newRefIndex = refList.findIndex(p => p.id === targetId);
-
-      if (oldRefIndex !== -1 && newRefIndex !== -1) {
-        const updatedRefList = [...refList];
-        const [movedItem] = updatedRefList.splice(oldRefIndex, 1);
-        updatedRefList.splice(newRefIndex, 0, movedItem);
-        return [...imList, ...updatedRefList];
-      }
-
-      return prev;
-    });
-    setDraggedPatientId(null);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedPatientId(null);
-    setDragOverPatientId(null);
   };
 
   const handlePerformEndorsement = () => {
@@ -1624,32 +1560,22 @@ export default function App() {
       <h3 style={{ fontSize: '16px', color: '#1e3a8a', marginTop: '25px', marginBottom: '6px' }}>
         IM Inpatients & Unassigned Admissions ({imPatientsList.length})
       </h3>
-      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Drag and drop items vertically or use the arrow buttons to reorder.</p>
+      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange patient order.</p>
       
       <div style={styles.listContainer}>
         {imPatientsList.length === 0 ? (
           <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No IM inpatients found.</p>
         ) : (
           imPatientsList.map(patient => {
-            const isDragging = draggedPatientId === patient.id;
-            const isDragOver = dragOverPatientId === patient.id;
-
             return (
               <div 
                 key={patient.id} 
                 id={`patient-row-${patient.id}`} 
-                draggable
-                onDragStart={(e) => handleDragStart(e, patient.id)}
-                onDragOver={(e) => handleDragOver(e, patient.id)}
-                onDragLeave={(e) => handleDragLeave(e, patient.id)}
-                onDrop={(e) => handleDrop(e, patient.id)}
-                onDragEnd={handleDragEnd}
                 style={{ 
                   ...styles.patientRow, 
-                  cursor: 'grab',
-                  opacity: isDragging ? 0.4 : 1,
-                  borderTop: isDragOver ? '2px dashed #2563eb' : '5px solid #2563eb',
-                  background: isDragOver ? '#f0f9ff' : 'white'
+                  cursor: 'pointer',
+                  borderTop: '5px solid #2563eb',
+                  background: 'white'
                 }} 
                 onClick={() => setSelectedPatient(patient)}
               >
@@ -1676,33 +1602,23 @@ export default function App() {
           External Department Referrals ({referralPatientsList.length})
         </h3>
       </div>
-      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Drag and drop items vertically or use the arrow buttons to reorder referrals.</p>
+      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange referral order.</p>
 
       <div style={styles.listContainer}>
         {referralPatientsList.length === 0 ? (
           <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No active referrals.</p>
         ) : (
           referralPatientsList.map(patient => {
-            const isDragging = draggedPatientId === patient.id;
-            const isDragOver = dragOverPatientId === patient.id;
-
             return (
               <div 
                 key={patient.id} 
                 id={`patient-row-${patient.id}`} 
-                draggable
-                onDragStart={(e) => handleDragStart(e, patient.id)}
-                onDragOver={(e) => handleDragOver(e, patient.id)}
-                onDragLeave={(e) => handleDragLeave(e, patient.id)}
-                onDrop={(e) => handleDrop(e, patient.id)}
-                onDragEnd={handleDragEnd}
                 style={{ 
                   ...styles.patientRow, 
                   borderLeftColor: '#10b981',
-                  cursor: 'grab',
-                  opacity: isDragging ? 0.4 : 1,
-                  borderTop: isDragOver ? '2px dashed #059669' : '5px solid #10b981',
-                  background: isDragOver ? '#ecfdf5' : 'white'
+                  cursor: 'pointer',
+                  borderTop: '5px solid #10b981',
+                  background: 'white'
                 }} 
                 onClick={() => setSelectedPatient(patient)}
               >
