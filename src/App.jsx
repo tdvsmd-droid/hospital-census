@@ -230,6 +230,7 @@ export default function App() {
 
   // Drag and drop reordering state
   const [draggedPatientId, setDraggedPatientId] = useState(null);
+  const [dragOverPatientId, setDragOverPatientId] = useState(null);
 
   useEffect(() => {
     localStorage.setItem('jrrmdh_datespan', currentDateString);
@@ -403,17 +404,30 @@ export default function App() {
     });
   };
 
-  // Drag and drop handlers for IM Inpatients list
+  // Robust HTML5 Drag and Drop Handlers
   const handleDragStart = (e, id) => {
     setDraggedPatientId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
   };
 
-  const handleDragOver = (e) => {
+  const handleDragOver = (e, id) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverPatientId !== id) {
+      setDragOverPatientId(id);
+    }
+  };
+
+  const handleDragLeave = (e, id) => {
+    if (dragOverPatientId === id) {
+      setDragOverPatientId(null);
+    }
   };
 
   const handleDrop = (e, targetId) => {
     e.preventDefault();
+    setDragOverPatientId(null);
     if (draggedPatientId === null || draggedPatientId === targetId) return;
 
     setPatients(prev => {
@@ -432,6 +446,11 @@ export default function App() {
       return [...updatedImList, ...refList];
     });
     setDraggedPatientId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedPatientId(null);
+    setDragOverPatientId(null);
   };
 
   const handlePerformEndorsement = () => {
@@ -609,9 +628,6 @@ export default function App() {
       }
     }
 
-    // Automated Referral-to-Inpatient Transfer logic:
-    // If the patient was previously a referral and is now assigned to a valid fixed room/bed (or custom ward), 
-    // we automatically promote them to an IM Inpatient and update their status if it was still 'Referral'.
     const isNowReferral = targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom);
 
     setPatients(prev => prev.map(p => {
@@ -632,7 +648,6 @@ export default function App() {
     alert(`Patient location updated to ${targetRoom}.`);
   };
 
-  // Cleared patients go directly to the Archive with duplicate prevention
   const handleClearRoom = (idOrRoom, e) => {
     if (e) e.stopPropagation();
     if (window.confirm("Clear this room and send the patient record directly to the Archive?")) {
@@ -673,7 +688,6 @@ export default function App() {
     }
   };
 
-  // Restoration Logic from Archive
   const handleRestoreArchivedPatient = (archivedRecord) => {
     const confirmRestore = window.confirm(`Do you want to restore ${archivedRecord.name} back to the active census?`);
     if (!confirmRestore) return;
@@ -1592,37 +1606,50 @@ export default function App() {
       <h3 style={{ fontSize: '16px', color: '#1e3a8a', marginTop: '25px', marginBottom: '6px' }}>
         IM Inpatients & Unassigned Admissions ({imPatientsList.length})
       </h3>
-      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: You can drag and drop items vertically or use the arrow buttons to reorder.</p>
+      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Drag and drop items vertically or use the arrow buttons to reorder.</p>
       
       <div style={styles.listContainer}>
         {imPatientsList.length === 0 ? (
           <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No IM inpatients found.</p>
         ) : (
-          imPatientsList.map(patient => (
-            <div 
-              key={patient.id} 
-              id={`patient-row-${patient.id}`} 
-              draggable
-              onDragStart={(e) => handleDragStart(e, patient.id)}
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, patient.id)}
-              style={{ ...styles.patientRow, cursor: 'grab' }} 
-              onClick={() => setSelectedPatient(patient)}
-            >
-              <div>
-                <h4 style={{ margin: '0 0 4px 0', color: '#1e3a8a', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
-                <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis} (Day {calculateHospitalDay(patient.admissionDate)})</p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={statusBadge(patient.status)}>{patient.status}</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
-                  <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+          imPatientsList.map(patient => {
+            const isDragging = draggedPatientId === patient.id;
+            const isDragOver = dragOverPatientId === patient.id;
+
+            return (
+              <div 
+                key={patient.id} 
+                id={`patient-row-${patient.id}`} 
+                draggable
+                onDragStart={(e) => handleDragStart(e, patient.id)}
+                onDragOver={(e) => handleDragOver(e, patient.id)}
+                onDragLeave={(e) => handleDragLeave(e, patient.id)}
+                onDrop={(e) => handleDrop(e, patient.id)}
+                onDragEnd={handleDragEnd}
+                style={{ 
+                  ...styles.patientRow, 
+                  cursor: 'grab',
+                  opacity: isDragging ? 0.4 : 1,
+                  borderTop: isDragOver ? '2px dashed #2563eb' : '5px solid #2563eb',
+                  background: isDragOver ? '#f0f9ff' : 'white'
+                }} 
+                onClick={() => setSelectedPatient(patient)}
+              >
+                <div>
+                  <h4 style={{ margin: '0 0 4px 0', color: '#1e3a8a', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
+                  <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis} (Day {calculateHospitalDay(patient.admissionDate)})</p>
                 </div>
-                <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={statusBadge(patient.status)}>{patient.status}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
+                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+                  </div>
+                  <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -1704,7 +1731,7 @@ const styles = {
   roomGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px', marginTop: '10px', maxHeight: '280px', overflowY: 'auto', padding: '8px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#ffffff' },
   roomCard: { padding: '10px', borderRadius: '8px', border: '1px solid', transition: 'all 0.2s ease' },
   listContainer: { display: 'flex', flexDirection: 'column', gap: '12px' },
-  patientRow: { background: 'white', padding: '18px 22px', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderLeft: '5px solid #2563eb' },
+  patientRow: { background: 'white', padding: '18px 22px', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderLeft: '5px solid #2563eb', transition: 'background 0.15s ease' },
   archiveTable: { width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', marginTop: '8px' },
   tableHeaderRow: { background: '#e2e8f0', color: '#1e293b' },
   th: { padding: '10px 12px', borderBottom: '2px solid #cbd5e1', fontWeight: 'bold' },
