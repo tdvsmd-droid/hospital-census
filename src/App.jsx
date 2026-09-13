@@ -480,12 +480,17 @@ export default function App() {
 
     setPatients(prev => prev.map(p => {
       if (p.id === patientId) {
-        return {
+        const updated = {
           ...p,
           wardRoom: availableRoom,
           isReferral: false,
           status: 'New Admission'
         };
+        // If we are currently viewing this patient in detail view, update selectedPatient too
+        if (selectedPatient && selectedPatient.id === patientId) {
+          setSelectedPatient(updated);
+        }
+        return updated;
       }
       return p;
     }));
@@ -1375,6 +1380,8 @@ export default function App() {
   }
 
   if (selectedPatient) {
+    const isReferralPatient = selectedPatient.isReferral || isReferralLocation(selectedPatient.wardRoom) || selectedPatient.wardRoom === 'Pending Room Assignment';
+
     return (
       <div style={styles.container}>
         <button style={styles.backButton} onClick={() => { 
@@ -1393,7 +1400,12 @@ export default function App() {
               <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Location / Room:</strong> <span style={{ color: '#0284c7', fontWeight: 'bold' }}>{selectedPatient.wardRoom}</span></p>
               <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Attending Physician:</strong> {selectedPatient.physician || 'Not specified'}</p>
             </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {isReferralPatient && (
+                <button style={styles.autoTransferCardBtn} onClick={(e) => handleAutomatedTransfer(selectedPatient.id, e)} title="Automatically assign first available vacant bed">
+                  ⚡ Auto-Transfer
+                </button>
+              )}
               <button style={styles.transferButton} onClick={openTransferModal}>
                 {selectedPatient.wardRoom === 'Pending Room Assignment' ? 'Assign Room/Bed' : 'Transfer Bed'}
               </button>
@@ -1848,7 +1860,7 @@ const styles = {
   cancelBtn: { background: '#64748b', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' },
   clearRoomButton: { background: '#ef4444', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', marginTop: '24px' },
   smallClearBtn: { background: '#fee2e2', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
-  autoTransferCardBtn: { background: '#d1fae5', color: '#047857', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
+  autoTransferCardBtn: { background: '#d1fae5', color: '#047857', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' },
   autoBatchBtn: { background: '#059669', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   orderArrowBtn: { background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#334155', width: '24px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: 'bold', padding: '0' }
 };
