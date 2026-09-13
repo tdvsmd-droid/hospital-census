@@ -228,6 +228,9 @@ export default function App() {
   const [showRevertBox, setShowRevertBox] = useState(false);
   const [revertPassword, setRevertPassword] = useState('');
 
+  // Drag and drop reordering state
+  const [draggedPatientId, setDraggedPatientId] = useState(null);
+
   useEffect(() => {
     localStorage.setItem('jrrmdh_datespan', currentDateString);
   }, [currentDateString]);
@@ -386,16 +389,49 @@ export default function App() {
   const movePatientOrder = (id, direction, e) => {
     if (e) e.stopPropagation();
     setPatients(prev => {
-      const index = prev.findIndex(p => p.id === id);
+      const imList = prev.filter(p => !p.isReferral);
+      const refList = prev.filter(p => p.isReferral);
+      const index = imList.findIndex(p => p.id === id);
       if (index === -1) return prev;
       const targetIndex = direction === 'up' ? index - 1 : index + 1;
-      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
-      const updated = [...prev];
-      const temp = updated[index];
-      updated[index] = updated[targetIndex];
-      updated[targetIndex] = temp;
-      return updated;
+      if (targetIndex < 0 || targetIndex >= imList.length) return prev;
+      const updatedIm = [...imList];
+      const temp = updatedIm[index];
+      updatedIm[index] = updatedIm[targetIndex];
+      updatedIm[targetIndex] = temp;
+      return [...updatedIm, ...refList];
     });
+  };
+
+  // Drag and drop handlers for IM Inpatients list
+  const handleDragStart = (e, id) => {
+    setDraggedPatientId(id);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e, targetId) => {
+    e.preventDefault();
+    if (draggedPatientId === null || draggedPatientId === targetId) return;
+
+    setPatients(prev => {
+      const imList = prev.filter(p => !p.isReferral);
+      const refList = prev.filter(p => p.isReferral);
+
+      const oldIndex = imList.findIndex(p => p.id === draggedPatientId);
+      const newIndex = imList.findIndex(p => p.id === targetId);
+
+      if (oldIndex === -1 || newIndex === -1) return prev;
+
+      const updatedImList = [...imList];
+      const [movedItem] = updatedImList.splice(oldIndex, 1);
+      updatedImList.splice(newIndex, 0, movedItem);
+
+      return [...updatedImList, ...refList];
+    });
+    setDraggedPatientId(null);
   };
 
   const handlePerformEndorsement = () => {
@@ -573,9 +609,17 @@ export default function App() {
       }
     }
 
+    // Determine if the patient is moving from a referral to an IM Inpatient based on room assignment
+    const isNowReferral = targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom);
+
     setPatients(prev => prev.map(p => {
       if (p.id === selectedPatient.id) {
-        const updatedPatient = { ...p, wardRoom: targetRoom };
+        const updatedPatient = { 
+          ...p, 
+          wardRoom: targetRoom,
+          isReferral: isNowReferral,
+          status: (p.status === 'Referral' && !isNowReferral) ? 'New Admission' : p.status
+        };
         setSelectedPatient(updatedPatient);
         return updatedPatient;
       }
@@ -659,7 +703,7 @@ export default function App() {
       },
       status: archivedRecord.status === 'MGH' ? 'Stable' : (archivedRecord.status || 'Stable'),
       physician: archivedRecord.physician || internistOnDuty,
-      isReferral: archivedRecord.isReferral || false
+      isReferral: targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom)
     };
 
     setPatients(prev => [...prev, restoredObj]);
@@ -783,7 +827,6 @@ export default function App() {
   const splashActiveCount = patients.filter(p => p.wardRoom !== 'Pending Room Assignment' && !p.isReferral).length;
   const splashPendingRoomCount = patients.filter(p => p.wardRoom === 'Pending Room Assignment').length;
   const splashForDischargeCount = patients.filter(p => p.status === 'MGH' || p.status === 'For Discharge').length;
-  const splashDischargedCount = dischargedArchive.filter(rec => !rec.isSnapshot).length;
   const splashReferralCount = patients.filter(p => p.isReferral || isReferralLocation(p.wardRoom)).length;
 
   const matchingSnapshots = dischargedArchive.filter(rec => rec.isSnapshot && rec.admissionPeriod.toLowerCase().includes(dutyDateQuery.toLowerCase()));
@@ -886,10 +929,6 @@ export default function App() {
                 <div style={styles.splashMetricItem}>
                   <span style={styles.splashMetricNum}>{splashForDischargeCount}</span>
                   <span style={styles.splashMetricLabel}>For Discharge</span>
-                </div>
-                <div style={styles.splashMetricItem}>
-                  <span style={styles.splashMetricNum}>{splashDischargedCount}</span>
-                  <span style={styles.splashMetricLabel}>Discharged (Cleared)</span>
                 </div>
               </div>
             </div>
@@ -1548,15 +1587,26 @@ export default function App() {
         })}
       </div>
 
-      <h3 style={{ fontSize: '16px', color: '#1e3a8a', marginTop: '25px', marginBottom: '10px' }}>
+      <h3 style={{ fontSize: '16px', color: '#1e3a8a', marginTop: '25px', marginBottom: '6px' }}>
         IM Inpatients & Unassigned Admissions ({imPatientsList.length})
       </h3>
+      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: You can drag and drop items vertically or use the arrow buttons to reorder.</p>
+      
       <div style={styles.listContainer}>
         {imPatientsList.length === 0 ? (
           <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No IM inpatients found.</p>
         ) : (
           imPatientsList.map(patient => (
-            <div key={patient.id} id={`patient-row-${patient.id}`} style={styles.patientRow} onClick={() => setSelectedPatient(patient)}>
+            <div 
+              key={patient.id} 
+              id={`patient-row-${patient.id}`} 
+              draggable
+              onDragStart={(e) => handleDragStart(e, patient.id)}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, patient.id)}
+              style={{ ...styles.patientRow, cursor: 'grab' }} 
+              onClick={() => setSelectedPatient(patient)}
+            >
               <div>
                 <h4 style={{ margin: '0 0 4px 0', color: '#1e3a8a', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
                 <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis} (Day {calculateHospitalDay(patient.admissionDate)})</p>
@@ -1589,10 +1639,6 @@ export default function App() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={statusBadge(patient.status)}>{patient.status}</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
-                  <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
-                </div>
                 <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
               </div>
             </div>
@@ -1631,7 +1677,7 @@ const styles = {
   splashMetricsSection: { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' },
   splashMetricBox: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px', textAlign: 'left' },
   splashMetricHeader: { margin: '0 0 10px 0', fontSize: '14px', fontWeight: '700', color: '#1e3a8a', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' },
-  splashMetricGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', textAlign: 'center' },
+  splashMetricGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' },
   splashMetricItem: { background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center' },
   splashMetricItemSingle: { background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '140px' },
   splashMetricNum: { fontSize: '18px', fontWeight: '800', color: '#0284c7', lineHeight: '1.2' },
