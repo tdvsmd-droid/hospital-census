@@ -228,6 +228,16 @@ export default function App() {
   const [showRevertBox, setShowRevertBox] = useState(false);
   const [revertPassword, setRevertPassword] = useState('');
 
+  // Trash Bin Recovery States
+  const [trashBin, setTrashBin] = useState(() => {
+    const savedTrash = localStorage.getItem('jrrmdh_trash');
+    if (savedTrash) {
+      try { return JSON.parse(savedTrash); } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+  const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
+
   useEffect(() => {
     localStorage.setItem('jrrmdh_datespan', currentDateString);
   }, [currentDateString]);
@@ -235,6 +245,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('jrrmdh_internist', internistOnDuty);
   }, [internistOnDuty]);
+
+  useEffect(() => {
+    localStorage.setItem('jrrmdh_trash', JSON.stringify(trashBin));
+  }, [trashBin]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalInitialRoom, setModalInitialRoom] = useState('Pending Room Assignment');
@@ -588,19 +602,28 @@ export default function App() {
 
   const handleClearRoom = (idOrRoom, e) => {
     if (e) e.stopPropagation();
-    if (window.confirm("Clear this room and archive individual patient record?")) {
-      const patientToArchive = patients.find(p => p.id === idOrRoom || p.wardRoom === idOrRoom);
-      if (patientToArchive) {
+    if (window.confirm("Clear this room and send patient to the recovery trash bin & archive?")) {
+      const patientToClear = patients.find(p => p.id === idOrRoom || p.wardRoom === idOrRoom);
+      
+      if (patientToClear) {
+        // 1. Add to Trash Bin
+        const trashedRecord = {
+          ...patientToClear,
+          deletedAt: new Date().toLocaleString()
+        };
+        setTrashBin(prev => [trashedRecord, ...prev]);
+
+        // 2. Add to Archive
         const todayStr = new Date().toISOString().split('T')[0];
         const archivedRecord = {
           id: Date.now(),
-          name: patientToArchive.name,
-          ageSex: patientToArchive.ageSex,
-          admissionDate: patientToArchive.admissionDate,
+          name: patientToClear.name,
+          ageSex: patientToClear.ageSex,
+          admissionDate: patientToClear.admissionDate,
           dischargeDate: todayStr,
-          admissionPeriod: `${patientToArchive.admissionDate} - ${todayStr}`,
-          physician: patientToArchive.physician || internistOnDuty,
-          finalImpression: patientToArchive.workingImpression || patientToArchive.admittingDiagnosis,
+          admissionPeriod: `${patientToClear.admissionDate} - ${todayStr}`,
+          physician: patientToClear.physician || internistOnDuty,
+          finalImpression: patientToClear.workingImpression || patientToClear.admittingDiagnosis,
           isSnapshot: false
         };
         setDischargedArchive(prev => [archivedRecord, ...prev]);
@@ -611,6 +634,36 @@ export default function App() {
         setSelectedPatient(null);
       }
       setIsModalOpen(false);
+    }
+  };
+
+  const handleRestorePatient = (trashedPatient) => {
+    const occupant = patients.find(p => p.wardRoom.toLowerCase() === trashedPatient.wardRoom.toLowerCase());
+    
+    let targetRoom = trashedPatient.wardRoom;
+    if (occupant && targetRoom !== 'Pending Room Assignment') {
+      const forceRestore = window.confirm(
+        `Original room (${targetRoom}) is currently occupied by ${occupant.name}. Restore patient with 'Pending Room Assignment' instead?`
+      );
+      if (!forceRestore) return;
+      targetRoom = 'Pending Room Assignment';
+    }
+
+    const restoredObj = {
+      ...trashedPatient,
+      wardRoom: targetRoom,
+      status: trashedPatient.status === 'MGH' ? 'Stable' : trashedPatient.status
+    };
+    delete restoredObj.deletedAt;
+
+    setPatients(prev => [...prev, restoredObj]);
+    setTrashBin(prev => prev.filter(p => p.id !== trashedPatient.id));
+    alert(`Successfully restored ${trashedPatient.name} to active census!`);
+  };
+
+  const handleEmptyTrash = () => {
+    if (window.confirm("Are you sure you want to permanently delete all items in the trash bin?")) {
+      setTrashBin([]);
     }
   };
 
@@ -1413,6 +1466,7 @@ export default function App() {
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>+ Admit</button>
           <button style={styles.referralButton} onClick={openAddReferralModal}>+ Referral</button>
+          <button style={styles.trashNavBtnHeader} onClick={() => setIsTrashModalOpen(true)}>🗑️ Trash ({trashBin.length})</button>
           <button style={styles.archiveNavBtnHeader} onClick={() => { setCurrentView('archive'); clearAllArchiveSearches(); }}>Archive</button>
           <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>Home</button>
         </div>
@@ -1540,6 +1594,51 @@ export default function App() {
           onDischarge={(room) => handleClearRoom(room, null)}
         />
       )}
+
+      {/* TRASH BIN RECOVERY MODAL */}
+      {isTrashModalOpen && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalCardLarge}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: '#b91c1c', fontSize: '18px' }}>🗑️ Deleted / Cleared Patient Recovery Bin</h3>
+              <button onClick={() => setIsTrashModalOpen(false)} style={styles.modalCloseBtn}>&times;</button>
+            </div>
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
+              Patients accidentally cleared or deleted are kept here safely. Click "Restore" to bring them back to the active ward census.
+            </p>
+
+            {trashBin.length === 0 ? (
+              <p style={{ textAlign: 'center', padding: '30px', color: '#94a3b8', background: '#f8fafc', borderRadius: '8px' }}>Trash bin is empty.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto', marginBottom: '16px' }}>
+                {trashBin.map(patient => (
+                  <div key={patient.id} style={{ background: '#f8fafc', border: '1px solid #cbd5e1', padding: '12px 16px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                    <div>
+                      <h4 style={{ margin: '0 0 2px 0', color: '#1e3a8a', fontSize: '15px' }}>{patient.name} <span style={{ fontSize: '12px', color: '#64748b' }}>({patient.ageSex})</span></h4>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}><strong>Last Room:</strong> {patient.wardRoom} | <strong>Cleared At:</strong> {patient.deletedAt}</p>
+                    </div>
+                    <button 
+                      onClick={() => handleRestorePatient(patient)}
+                      style={{ background: '#059669', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      ♻️ Restore
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
+              {trashBin.length > 0 ? (
+                <button onClick={handleEmptyTrash} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Empty Trash Bin Permanently
+                </button>
+              ) : <span />}
+              <button onClick={() => setIsTrashModalOpen(false)} style={styles.cancelBtn}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1570,6 +1669,7 @@ const styles = {
   enterButton: { background: '#2563eb', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   endorseSplashButton: { background: '#059669', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   admitNewButton: { background: '#2563eb', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
+  trashNavBtnHeader: { background: '#ef4444', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   archiveNavBtnHeader: { background: '#f59e0b', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   container: { maxWidth: '960px', margin: '30px auto', padding: '24px', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif', background: '#f8fafc', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' },
   headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' },
