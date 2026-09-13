@@ -609,7 +609,9 @@ export default function App() {
       }
     }
 
-    // Determine if the patient is moving from a referral to an IM Inpatient based on room assignment
+    // Automated Referral-to-Inpatient Transfer logic:
+    // If the patient was previously a referral and is now assigned to a valid fixed room/bed (or custom ward), 
+    // we automatically promote them to an IM Inpatient and update their status if it was still 'Referral'.
     const isNowReferral = targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom);
 
     setPatients(prev => prev.map(p => {
