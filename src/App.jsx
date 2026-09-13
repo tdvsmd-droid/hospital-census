@@ -602,28 +602,27 @@ export default function App() {
 
   const handleClearRoom = (idOrRoom, e) => {
     if (e) e.stopPropagation();
-    if (window.confirm("Clear this room and send patient to the recovery trash bin & archive?")) {
+    if (window.confirm("Clear this room and archive patient record into the safe holding space?")) {
       const patientToClear = patients.find(p => p.id === idOrRoom || p.wardRoom === idOrRoom);
       
       if (patientToClear) {
-        // 1. Add to Trash Bin
+        // 1. Add to Trash Bin (quick safety net)
         const trashedRecord = {
           ...patientToClear,
           deletedAt: new Date().toLocaleString()
         };
         setTrashBin(prev => [trashedRecord, ...prev]);
 
-        // 2. Add to Archive
+        // 2. Add to Archive (Safe Holding Space with full restore payload & active census cycle tag)
         const todayStr = new Date().toISOString().split('T')[0];
         const archivedRecord = {
           id: Date.now(),
-          name: patientToClear.name,
-          ageSex: patientToClear.ageSex,
-          admissionDate: patientToClear.admissionDate,
+          ...patientToClear, // Store full patient object for seamless restoration
           dischargeDate: todayStr,
           admissionPeriod: `${patientToClear.admissionDate} - ${todayStr}`,
-          physician: patientToClear.physician || internistOnDuty,
           finalImpression: patientToClear.workingImpression || patientToClear.admittingDiagnosis,
+          censusCycle: currentDateString, // Tag with active census cycle
+          archivedAt: new Date().toLocaleString(),
           isSnapshot: false
         };
         setDischargedArchive(prev => [archivedRecord, ...prev]);
@@ -635,6 +634,47 @@ export default function App() {
       }
       setIsModalOpen(false);
     }
+  };
+
+  // Restoration Logic from Archive (Safe Holding Space)
+  const handleRestoreArchivedPatient = (archivedRecord) => {
+    const confirmRestore = window.confirm(`Do you want to restore ${archivedRecord.name} back to the active census?`);
+    if (!confirmRestore) return;
+
+    let targetRoom = archivedRecord.wardRoom || 'Pending Room Assignment';
+    const occupant = patients.find(p => p.wardRoom.toLowerCase() === targetRoom.toLowerCase());
+
+    if (occupant && targetRoom !== 'Pending Room Assignment') {
+      const forceRestore = window.confirm(
+        `Original room (${targetRoom}) is currently occupied by ${occupant.name}. Restore patient with 'Pending Room Assignment' instead?`
+      );
+      if (!forceRestore) return;
+      targetRoom = 'Pending Room Assignment';
+    }
+
+    const restoredObj = {
+      id: archivedRecord.id || Date.now(),
+      wardRoom: targetRoom,
+      name: archivedRecord.name,
+      ageSex: archivedRecord.ageSex,
+      admissionDate: archivedRecord.admissionDate,
+      admittingDiagnosis: archivedRecord.admittingDiagnosis,
+      workingImpression: archivedRecord.workingImpression || archivedRecord.admittingDiagnosis,
+      endorsement: archivedRecord.endorsement || {
+        currentCondition: 'Restored from archive holding space.',
+        diagnostics: 'Pending.',
+        therapeutics: 'Pending.',
+        remarks: ''
+      },
+      status: archivedRecord.status === 'MGH' ? 'Stable' : (archivedRecord.status || 'Stable'),
+      physician: archivedRecord.physician || internistOnDuty,
+      isReferral: archivedRecord.isReferral || false
+    };
+
+    setPatients(prev => [...prev, restoredObj]);
+    // Remove from archive holding space once restored
+    setDischargedArchive(prev => prev.filter(item => item.id !== archivedRecord.id));
+    alert(`Successfully restored ${archivedRecord.name} to the active census!`);
   };
 
   const handleRestorePatient = (trashedPatient) => {
@@ -954,7 +994,7 @@ export default function App() {
     return (
       <div style={styles.container}>
         <div style={styles.headerRow}>
-          <h2>Historical Archive & Search Hub</h2>
+          <h2>Historical Archive & Safe Holding Space Hub</h2>
           <button style={styles.homeButton} onClick={() => { setCurrentView('splash'); clearAllArchiveSearches(); }}>Home Splash</button>
         </div>
 
@@ -1070,8 +1110,8 @@ export default function App() {
         </div>
 
         <div style={styles.archiveSectionCard}>
-          <h3 style={{ margin: '0 0 6px 0', color: '#1e3a8a', fontSize: '16px' }}>2) Patient Details Search</h3>
-          <p style={{ margin: '0 0 14px 0', fontSize: '13px', color: '#64748b' }}>Select a category tab to search archived patient records independently.</p>
+          <h3 style={{ margin: '0 0 6px 0', color: '#1e3a8a', fontSize: '16px' }}>2) Patient Details Search & Safe Holding Space Restoration</h3>
+          <p style={{ margin: '0 0 14px 0', fontSize: '13px', color: '#64748b' }}>Search archived patient records. If a cleared patient belongs to the active census cycle [ <strong>{currentDateString}</strong> ], a restore option is available below.</p>
           
           <div style={styles.tabContainer}>
             <button 
@@ -1192,16 +1232,34 @@ export default function App() {
               
               matchingPatientRecords.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {matchingPatientRecords.map(record => (
-                    <div key={record.id} style={{ background: '#fff', padding: '16px', borderRadius: '8px', border: '1px solid #cbd5e1', borderLeft: '4px solid #0284c7' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
-                        <h4 style={{ margin: 0, color: '#1e3a8a', fontSize: '16px' }}>{record.name} <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'normal' }}>({record.ageSex})</span></h4>
-                        <span style={styles.periodBadge}>Admitted: {record.admissionDate || 'N/A'} | Discharged: {record.dischargeDate || 'N/A'}</span>
+                  {matchingPatientRecords.map(record => {
+                    // Restoration Logic Check: Belongs to active census cycle?
+                    const belongsToActiveCycle = record.censusCycle === currentDateString;
+
+                    return (
+                      <div key={record.id} style={{ background: '#fff', padding: '16px', borderRadius: '8px', border: '1px solid #cbd5e1', borderLeft: '4px solid #0284c7' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                          <h4 style={{ margin: 0, color: '#1e3a8a', fontSize: '16px' }}>{record.name} <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'normal' }}>({record.ageSex})</span></h4>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={styles.periodBadge}>Admitted: {record.admissionDate || 'N/A'} | Discharged: {record.dischargeDate || 'N/A'}</span>
+                            {belongsToActiveCycle && (
+                              <button 
+                                onClick={() => handleRestoreArchivedPatient(record)}
+                                style={{ background: '#059669', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                              >
+                                ♻️ Restore to Active Census
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <p style={{ margin: '4px 0', fontSize: '14px', color: '#334155' }}><strong>Attending Physician:</strong> {record.physician || 'Not specified'}</p>
+                        <p style={{ margin: '4px 0', fontSize: '14px', color: '#334155' }}><strong>Working Impression / Condition:</strong> {record.finalImpression}</p>
+                        {belongsToActiveCycle && (
+                          <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: '#047857', fontWeight: '600' }}>✓ Eligible for restoration (Clears to current active census cycle)</p>
+                        )}
                       </div>
-                      <p style={{ margin: '4px 0', fontSize: '14px', color: '#334155' }}><strong>Attending Physician:</strong> {record.physician || 'Not specified'}</p>
-                      <p style={{ margin: '4px 0', fontSize: '14px', color: '#334155' }}><strong>Working Impression / Condition:</strong> {record.finalImpression}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p style={{ textAlign: 'center', padding: '15px', color: '#666', background: '#f8fafc', borderRadius: '8px', fontSize: '14px', margin: 0 }}>No archived patient records found matching your search criteria.</p>
