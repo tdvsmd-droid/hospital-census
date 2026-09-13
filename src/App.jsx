@@ -404,7 +404,7 @@ export default function App() {
     });
   };
 
-  // Robust HTML5 Drag and Drop Handlers
+  // Robust HTML5 Drag and Drop Handlers for both Inpatients and Referrals
   const handleDragStart = (e, id) => {
     setDraggedPatientId(id);
     e.dataTransfer.effectAllowed = 'move';
@@ -434,16 +434,29 @@ export default function App() {
       const imList = prev.filter(p => !p.isReferral);
       const refList = prev.filter(p => p.isReferral);
 
-      const oldIndex = imList.findIndex(p => p.id === draggedPatientId);
-      const newIndex = imList.findIndex(p => p.id === targetId);
+      // Check if dragging within IM Inpatients list
+      const oldImIndex = imList.findIndex(p => p.id === draggedPatientId);
+      const newImIndex = imList.findIndex(p => p.id === targetId);
 
-      if (oldIndex === -1 || newIndex === -1) return prev;
+      if (oldImIndex !== -1 && newImIndex !== -1) {
+        const updatedImList = [...imList];
+        const [movedItem] = updatedImList.splice(oldImIndex, 1);
+        updatedImList.splice(newImIndex, 0, movedItem);
+        return [...updatedImList, ...refList];
+      }
 
-      const updatedImList = [...imList];
-      const [movedItem] = updatedImList.splice(oldIndex, 1);
-      updatedImList.splice(newIndex, 0, movedItem);
+      // Check if dragging within External Department Referrals list
+      const oldRefIndex = refList.findIndex(p => p.id === draggedPatientId);
+      const newRefIndex = refList.findIndex(p => p.id === targetId);
 
-      return [...updatedImList, ...refList];
+      if (oldRefIndex !== -1 && newRefIndex !== -1) {
+        const updatedRefList = [...refList];
+        const [movedItem] = updatedRefList.splice(oldRefIndex, 1);
+        updatedRefList.splice(newRefIndex, 0, movedItem);
+        return [...imList, ...updatedRefList];
+      }
+
+      return prev;
     });
     setDraggedPatientId(null);
   };
@@ -1655,28 +1668,52 @@ export default function App() {
         )}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '25px', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '25px', marginBottom: '6px', flexWrap: 'wrap', gap: '10px' }}>
         <h3 style={{ fontSize: '16px', color: '#059669', margin: 0 }}>
           External Department Referrals ({referralPatientsList.length})
         </h3>
       </div>
+      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Drag and drop items vertically to reorder referrals.</p>
 
       <div style={styles.listContainer}>
         {referralPatientsList.length === 0 ? (
           <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No active referrals.</p>
         ) : (
-          referralPatientsList.map(patient => (
-            <div key={patient.id} id={`patient-row-${patient.id}`} style={{ ...styles.patientRow, borderLeftColor: '#10b981' }} onClick={() => setSelectedPatient(patient)}>
-              <div>
-                <h4 style={{ margin: '0 0 4px 0', color: '#059669', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
-                <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis}</p>
+          referralPatientsList.map(patient => {
+            const isDragging = draggedPatientId === patient.id;
+            const isDragOver = dragOverPatientId === patient.id;
+
+            return (
+              <div 
+                key={patient.id} 
+                id={`patient-row-${patient.id}`} 
+                draggable
+                onDragStart={(e) => handleDragStart(e, patient.id)}
+                onDragOver={(e) => handleDragOver(e, patient.id)}
+                onDragLeave={(e) => handleDragLeave(e, patient.id)}
+                onDrop={(e) => handleDrop(e, patient.id)}
+                onDragEnd={handleDragEnd}
+                style={{ 
+                  ...styles.patientRow, 
+                  borderLeftColor: '#10b981',
+                  cursor: 'grab',
+                  opacity: isDragging ? 0.4 : 1,
+                  borderTop: isDragOver ? '2px dashed #059669' : '5px solid #10b981',
+                  background: isDragOver ? '#ecfdf5' : 'white'
+                }} 
+                onClick={() => setSelectedPatient(patient)}
+              >
+                <div>
+                  <h4 style={{ margin: '0 0 4px 0', color: '#059669', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
+                  <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis}</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={statusBadge(patient.status)}>{patient.status}</span>
+                  <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={statusBadge(patient.status)}>{patient.status}</span>
-                <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
