@@ -228,7 +228,7 @@ export default function App() {
   const [showRevertBox, setShowRevertBox] = useState(false);
   const [revertPassword, setRevertPassword] = useState('');
 
-  // Trash Bin Recovery States
+  // Trash Bin Recovery States (Independent quick safety net)
   const [trashBin, setTrashBin] = useState(() => {
     const savedTrash = localStorage.getItem('jrrmdh_trash');
     if (savedTrash) {
@@ -600,32 +600,38 @@ export default function App() {
     alert(`Patient location updated to ${targetRoom}.`);
   };
 
+  // Cleared patients are brought directly to the Archive (not trash) with duplicate prevention
   const handleClearRoom = (idOrRoom, e) => {
     if (e) e.stopPropagation();
-    if (window.confirm("Clear this room and archive patient record into the safe holding space?")) {
+    if (window.confirm("Clear this room and send the patient record directly to the Archive?")) {
       const patientToClear = patients.find(p => p.id === idOrRoom || p.wardRoom === idOrRoom);
       
       if (patientToClear) {
-        // 1. Add to Trash Bin (quick safety net)
-        const trashedRecord = {
-          ...patientToClear,
-          deletedAt: new Date().toLocaleString()
-        };
-        setTrashBin(prev => [trashedRecord, ...prev]);
-
-        // 2. Add to Archive (Safe Holding Space with full restore payload & active census cycle tag)
         const todayStr = new Date().toISOString().split('T')[0];
         const archivedRecord = {
-          id: Date.now(),
-          ...patientToClear, // Store full patient object for seamless restoration
+          id: patientToClear.id || Date.now(),
+          ...patientToClear, 
           dischargeDate: todayStr,
           admissionPeriod: `${patientToClear.admissionDate} - ${todayStr}`,
           finalImpression: patientToClear.workingImpression || patientToClear.admittingDiagnosis,
-          censusCycle: currentDateString, // Tag with active census cycle
+          censusCycle: currentDateString, 
           archivedAt: new Date().toLocaleString(),
           isSnapshot: false
         };
-        setDischargedArchive(prev => [archivedRecord, ...prev]);
+
+        // Check for identical entries in the archive before pushing
+        setDischargedArchive(prev => {
+          const isDuplicate = prev.some(item => 
+            !item.isSnapshot &&
+            item.name.toLowerCase() === archivedRecord.name.toLowerCase() &&
+            item.admissionDate === archivedRecord.admissionDate &&
+            item.dischargeDate === archivedRecord.dischargeDate
+          );
+          if (isDuplicate) {
+            return prev; // Prevent identical duplicate entries
+          }
+          return [archivedRecord, ...prev];
+        });
       }
 
       setPatients(prev => prev.filter(p => p.id !== idOrRoom && p.wardRoom !== idOrRoom));
@@ -672,7 +678,6 @@ export default function App() {
     };
 
     setPatients(prev => [...prev, restoredObj]);
-    // Remove from archive holding space once restored
     setDischargedArchive(prev => prev.filter(item => item.id !== archivedRecord.id));
     alert(`Successfully restored ${archivedRecord.name} to the active census!`);
   };
@@ -1233,7 +1238,6 @@ export default function App() {
               matchingPatientRecords.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {matchingPatientRecords.map(record => {
-                    // Restoration Logic Check: Belongs to active census cycle?
                     const belongsToActiveCycle = record.censusCycle === currentDateString;
 
                     return (
@@ -1658,11 +1662,11 @@ export default function App() {
         <div style={styles.modalOverlay}>
           <div style={styles.modalCardLarge}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, color: '#b91c1c', fontSize: '18px' }}>🗑️ Deleted / Cleared Patient Recovery Bin</h3>
+              <h3 style={{ margin: 0, color: '#b91c1c', fontSize: '18px' }}>🗑️ Quick Safety Net Trash Bin</h3>
               <button onClick={() => setIsTrashModalOpen(false)} style={styles.modalCloseBtn}>&times;</button>
             </div>
             <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
-              Patients accidentally cleared or deleted are kept here safely. Click "Restore" to bring them back to the active ward census.
+              Temporary quick recovery items. Note: Cleared patients now go directly to the Archive.
             </p>
 
             {trashBin.length === 0 ? (
@@ -1673,7 +1677,7 @@ export default function App() {
                   <div key={patient.id} style={{ background: '#f8fafc', border: '1px solid #cbd5e1', padding: '12px 16px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
                     <div>
                       <h4 style={{ margin: '0 0 2px 0', color: '#1e3a8a', fontSize: '15px' }}>{patient.name} <span style={{ fontSize: '12px', color: '#64748b' }}>({patient.ageSex})</span></h4>
-                      <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}><strong>Last Room:</strong> {patient.wardRoom} | <strong>Cleared At:</strong> {patient.deletedAt}</p>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}><strong>Last Room:</strong> {patient.wardRoom} | <strong>Removed At:</strong> {patient.deletedAt}</p>
                     </div>
                     <button 
                       onClick={() => handleRestorePatient(patient)}
