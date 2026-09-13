@@ -343,14 +343,13 @@ export default function App() {
   const [selectedSnapshotOption, setSelectedSnapshotOption] = useState(null);
 
   // Section 2: Patient Details Search States (Tabbed)
-  const [activeDetailTab, setActiveDetailTab] = useState('name'); // 'name', 'admissionDate', 'dischargeDate', 'physician', 'impression'
+  const [activeDetailTab, setActiveDetailTab] = useState('name');
   const [nameQuery, setNameQuery] = useState('');
   const [admissionDateQuery, setAdmissionDateQuery] = useState('');
   const [dischargeDateQuery, setDischargeDateQuery] = useState('');
   const [physicianQuery, setPhysicianQuery] = useState('');
   const [impressionQuery, setImpressionQuery] = useState('');
 
-  // Scroll back to specific patient row upon returning from detail view
   useEffect(() => {
     if (!selectedPatient && lastViewedIdRef.current) {
       const el = document.getElementById(`patient-row-${lastViewedIdRef.current}`);
@@ -390,21 +389,29 @@ export default function App() {
   const movePatientOrder = (id, direction, e) => {
     if (e) e.stopPropagation();
     setPatients(prev => {
-      const imList = prev.filter(p => !p.isReferral);
-      const refList = prev.filter(p => p.isReferral);
-      const index = imList.findIndex(p => p.id === id);
+      const targetPatient = prev.find(p => p.id === id);
+      if (!targetPatient) return prev;
+
+      const isRef = targetPatient.isReferral;
+      const subList = prev.filter(p => p.isReferral === isRef);
+      const otherList = prev.filter(p => p.isReferral !== isRef);
+
+      const index = subList.findIndex(p => p.id === id);
       if (index === -1) return prev;
+      
       const targetIndex = direction === 'up' ? index - 1 : index + 1;
-      if (targetIndex < 0 || targetIndex >= imList.length) return prev;
-      const updatedIm = [...imList];
-      const temp = updatedIm[index];
-      updatedIm[index] = updatedIm[targetIndex];
-      updatedIm[targetIndex] = temp;
-      return [...updatedIm, ...refList];
+      if (targetIndex < 0 || targetIndex >= subList.length) return prev;
+      
+      const updatedSub = [...subList];
+      const temp = updatedSub[index];
+      updatedSub[index] = updatedSub[targetIndex];
+      updatedSub[targetIndex] = temp;
+      
+      return isRef ? [...otherList, ...updatedSub] : [...updatedSub, ...otherList];
     });
   };
 
-  // Robust HTML5 Drag and Drop Handlers for both Inpatients and Referrals
+  // Drag and Drop Handlers
   const handleDragStart = (e, id) => {
     setDraggedPatientId(id);
     e.dataTransfer.effectAllowed = 'move';
@@ -434,7 +441,6 @@ export default function App() {
       const imList = prev.filter(p => !p.isReferral);
       const refList = prev.filter(p => p.isReferral);
 
-      // Check if dragging within IM Inpatients list
       const oldImIndex = imList.findIndex(p => p.id === draggedPatientId);
       const newImIndex = imList.findIndex(p => p.id === targetId);
 
@@ -445,7 +451,6 @@ export default function App() {
         return [...updatedImList, ...refList];
       }
 
-      // Check if dragging within External Department Referrals list
       const oldRefIndex = refList.findIndex(p => p.id === draggedPatientId);
       const newRefIndex = refList.findIndex(p => p.id === targetId);
 
@@ -1305,8 +1310,6 @@ export default function App() {
   }
 
   if (selectedPatient) {
-    const isReferralPatient = selectedPatient.isReferral || isReferralLocation(selectedPatient.wardRoom) || selectedPatient.wardRoom === 'Pending Room Assignment';
-
     return (
       <div style={styles.container}>
         <button style={styles.backButton} onClick={() => { 
@@ -1673,7 +1676,7 @@ export default function App() {
           External Department Referrals ({referralPatientsList.length})
         </h3>
       </div>
-      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Drag and drop items vertically to reorder referrals.</p>
+      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Drag and drop items vertically or use the arrow buttons to reorder referrals.</p>
 
       <div style={styles.listContainer}>
         {referralPatientsList.length === 0 ? (
@@ -1709,6 +1712,10 @@ export default function App() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={statusBadge(patient.status)}>{patient.status}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
+                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+                  </div>
                   <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
                 </div>
               </div>
