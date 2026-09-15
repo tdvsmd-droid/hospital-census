@@ -212,6 +212,7 @@ function PatientModal({ room, allRooms, patient, onClose, onSave, onDischarge })
 // --- Main App Component ---
 export default function App() {
   const [currentView, setCurrentView] = useState('splash'); // 'splash', 'census', or 'archive'
+  const [patients, setPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   
