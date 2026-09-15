@@ -219,7 +219,7 @@ export default function App() {
 
   const [activeSnapshotId, setActiveSnapshotId] = useState(null);
 
-  // --- Device Mode States (Toggle hidden, locked to stored value) ---
+  // --- Device Mode States ---
   const [isEditorDevice] = useState(() => {
     return localStorage.getItem('jrrmdh_is_editor') === 'true';
   });
@@ -271,70 +271,105 @@ export default function App() {
     status: 'Stable'
   });
 
-  // --- Supabase Data Loading on Startup & Realtime Subscription ---
+  // --- Supabase Data Loading with LocalStorage Offline Fallback ---
   const [patients, setPatients] = useState([]);
 
   useEffect(() => {
     async function fetchPatients() {
-      const { data, error } = await supabase
-        .from('patients')
-        .select('*');
+      try {
+        const { data, error } = await supabase
+          .from('patients')
+          .select('*');
 
-      if (error) {
-        console.error('Error fetching patients from Supabase:', error);
-      } else if (data && data.length > 0) {
-        const formattedPatients = data.map(p => ({
-          id: p.id,
-          wardRoom: p.ward_room,
-          name: p.name,
-          ageSex: p.age_sex,
-          admissionDate: p.admission_date,
-          admittingDiagnosis: p.admitting_diagnosis,
-          workingImpression: p.working_impression,
-          endorsement: p.endorsement || {},
-          status: p.status,
-          physician: p.physician,
-          isReferral: p.is_referral
-        }));
-        setPatients(formattedPatients);
-      } else {
-        setPatients([
-          {
-            id: 1,
-            wardRoom: '303-1',
-            name: 'Dela Cruz, Juan',
-            ageSex: '65 / M',
-            admissionDate: '2026-08-20',
-            admittingDiagnosis: 'Community-Acquired Pneumonia, High Risk',
-            workingImpression: 'Resolving CAP, rule out secondary bacterial infection',
-            endorsement: {
-              currentCondition: 'Stable, conscious, coherent, mild productive cough.',
-              diagnostics: 'CBC pending. Chest X-ray showed clearing infiltrates.',
-              therapeutics: 'IV Levofloxacin 500mg OD, Salbutamol nebulization Q6H.',
-              remarks: 'Waiting for relative to bring PhilHealth forms.'
-            },
-            status: 'MGH',
-            physician: 'Dr. Maria Santos',
-            isReferral: false
-          }
-        ]);
+        if (error) {
+          console.error('Supabase fetch error, using local storage fallback:', error);
+          loadFromLocalFallback();
+        } else if (data && data.length > 0) {
+          const formattedPatients = data.map(p => ({
+            id: p.id,
+            wardRoom: p.ward_room,
+            name: p.name,
+            ageSex: p.age_sex,
+            admissionDate: p.admission_date,
+            admittingDiagnosis: p.admitting_diagnosis,
+            workingImpression: p.working_impression,
+            endorsement: p.endorsement || {},
+            status: p.status,
+            physician: p.physician,
+            isReferral: p.is_referral
+          }));
+          setPatients(formattedPatients);
+          localStorage.setItem('jrrmdh_patients', JSON.stringify(formattedPatients));
+        } else {
+          loadFromLocalFallback();
+        }
+      } catch (err) {
+        console.error('Network offline / exception, using local storage fallback:', err);
+        loadFromLocalFallback();
       }
+    }
+
+    function loadFromLocalFallback() {
+      const savedPatients = localStorage.getItem('jrrmdh_patients');
+      if (savedPatients) {
+        try {
+          setPatients(JSON.parse(savedPatients));
+          return;
+        } catch (e) {
+          console.error('Error parsing local patients:', e);
+        }
+      }
+      // Default initial fallback data
+      setPatients([
+        {
+          id: 1,
+          wardRoom: '303-1',
+          name: 'Dela Cruz, Juan',
+          ageSex: '65 / M',
+          admissionDate: '2026-08-20',
+          admittingDiagnosis: 'Community-Acquired Pneumonia, High Risk',
+          workingImpression: 'Resolving CAP, rule out secondary bacterial infection',
+          endorsement: {
+            currentCondition: 'Stable, conscious, coherent, mild productive cough.',
+            diagnostics: 'CBC pending. Chest X-ray showed clearing infiltrates.',
+            therapeutics: 'IV Levofloxacin 500mg OD, Salbutamol nebulization Q6H.',
+            remarks: 'Waiting for relative to bring PhilHealth forms.'
+          },
+          status: 'MGH',
+          physician: 'Dr. Maria Santos',
+          isReferral: false
+        }
+      ]);
     }
 
     fetchPatients();
 
-    // Setup Realtime Sync so read-only devices update automatically when editor makes changes
-    const channel = supabase
-      .channel('public:patients')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
-        fetchPatients();
-      })
-      .subscribe();
+    // Setup Realtime Sync
+    let channel;
+    try {
+      channel = supabase
+        .channel('public:patients')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
+          fetchPatients();
+        })
+        .subscribe();
+    } catch (e) {
+      console.log('Realtime subscription skipped offline.');
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, []);
+
+  // Save patients to localStorage whenever they change for offline support
+  useEffect(() => {
+    if (patients.length > 0) {
+      localStorage.setItem('jrrmdh_patients', JSON.stringify(patients));
+    }
+  }, [patients]);
 
   const [dischargedArchive, setDischargedArchive] = useState(() => {
     const savedArchive = localStorage.getItem('jrrmdh_archive');
@@ -360,7 +395,7 @@ export default function App() {
     localStorage.setItem('jrrmdh_archive', JSON.stringify(dischargedArchive));
   }, [dischargedArchive]);
 
-  // --- Full Data Migration Function (Tablet Optimized) ---
+  // --- Full Data Migration Function ---
   const migrateAllDataToSupabase = async () => {
     if (!isEditorDevice) {
       alert('Action restricted: Only the designated Editor Device can perform data migrations.');
@@ -372,7 +407,6 @@ export default function App() {
 
     alert('Starting migration to Supabase cloud...');
 
-    // 1. Migrate Active Patients State
     if (patients && patients.length > 0) {
       for (const p of patients) {
         const { error } = await supabase
@@ -384,7 +418,7 @@ export default function App() {
             age_sex: p.ageSex,
             admission_date: p.admissionDate,
             admitting_diagnosis: p.admittingDiagnosis,
-            working_impression: p.workingImpression || p.admittingDiagnosis,
+            working_impression: p.working_impression || p.admittingDiagnosis,
             endorsement: p.endorsement || {},
             status: p.status || 'Stable',
             physician: p.physician || internistOnDuty,
@@ -397,11 +431,8 @@ export default function App() {
           successCount++;
         }
       }
-    } else {
-      errorLog.push('Active patients array was empty during migration attempt.');
     }
 
-    // 2. Migrate Archive Data from LocalStorage
     const savedArchive = localStorage.getItem('jrrmdh_archive');
     if (savedArchive) {
       try {
@@ -431,7 +462,6 @@ export default function App() {
       }
     }
 
-    // 3. Report results directly on the tablet screen
     if (errorLog.length > 0) {
       alert(`Migration completed with errors:\n\n- ${errorLog.join('\n- ')}`);
     } else {
@@ -439,11 +469,10 @@ export default function App() {
     }
   };
 
-  // Section 1: Duty Date Search State
+  // Search States
   const [dutyDateQuery, setDutyDateQuery] = useState('');
   const [selectedSnapshotOption, setSelectedSnapshotOption] = useState(null);
 
-  // Section 2: Patient Details Search States (Tabbed)
   const [activeDetailTab, setActiveDetailTab] = useState('name');
   const [nameQuery, setNameQuery] = useState('');
   const [admissionDateQuery, setAdmissionDateQuery] = useState('');
@@ -720,19 +749,17 @@ export default function App() {
 
     const isNowReferral = targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom);
 
-    const { error } = await supabase
-      .from('patients')
-      .update({ 
-        ward_room: targetRoom, 
-        is_referral: isNowReferral,
-        status: (selectedPatient.status === 'Referral' && !isNowReferral) ? 'New Admission' : selectedPatient.status
-      })
-      .eq('id', selectedPatient.id);
-
-    if (error) {
-      console.error('Error updating room in Supabase:', error);
-      alert('Failed to update room in database.');
-      return;
+    try {
+      await supabase
+        .from('patients')
+        .update({ 
+          ward_room: targetRoom, 
+          is_referral: isNowReferral,
+          status: (selectedPatient.status === 'Referral' && !isNowReferral) ? 'New Admission' : selectedPatient.status
+        })
+        .eq('id', selectedPatient.id);
+    } catch (err) {
+      console.log('Offline transfer update local only:', err);
     }
 
     setPatients(prev => prev.map(p => {
@@ -789,13 +816,13 @@ export default function App() {
           return [archivedRecord, ...prev];
         });
 
-        const { error } = await supabase
-          .from('patients')
-          .delete()
-          .eq('id', patientToClear.id);
-
-        if (error) {
-          console.error('Error deleting patient from Supabase:', error);
+        try {
+          await supabase
+            .from('patients')
+            .delete()
+            .eq('id', patientToClear.id);
+        } catch (err) {
+          console.log('Offline delete local only:', err);
         }
       }
 
@@ -847,26 +874,24 @@ export default function App() {
       isReferral: targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom)
     };
 
-    const { error } = await supabase
-      .from('patients')
-      .insert([{
-        id: newId,
-        ward_room: restoredObj.wardRoom,
-        name: restoredObj.name,
-        age_sex: restoredObj.ageSex,
-        admission_date: restoredObj.admissionDate,
-        admitting_diagnosis: restoredObj.admittingDiagnosis,
-        working_impression: restoredObj.workingImpression,
-        endorsement: restoredObj.endorsement,
-        status: restoredObj.status,
-        physician: restoredObj.physician,
-        is_referral: restoredObj.isReferral
-      }]);
-
-    if (error) {
-      console.error('Error restoring patient to Supabase:', error);
-      alert('Failed to save restored patient to database.');
-      return;
+    try {
+      await supabase
+        .from('patients')
+        .insert([{
+          id: newId,
+          ward_room: restoredObj.wardRoom,
+          name: restoredObj.name,
+          age_sex: restoredObj.ageSex,
+          admission_date: restoredObj.admissionDate,
+          admitting_diagnosis: restoredObj.admittingDiagnosis,
+          working_impression: restoredObj.workingImpression,
+          endorsement: restoredObj.endorsement,
+          status: restoredObj.status,
+          physician: restoredObj.physician,
+          is_referral: restoredObj.isReferral
+        }]);
+    } catch (err) {
+      console.log('Offline restore local only:', err);
     }
 
     setPatients(prev => [...prev, restoredObj]);
@@ -906,26 +931,24 @@ export default function App() {
       isReferral: isReferralSave
     };
 
-    const { error } = await supabase
-      .from('patients')
-      .insert([{
-        id: newId,
-        ward_room: newPatientObj.wardRoom,
-        name: newPatientObj.name,
-        age_sex: newPatientObj.ageSex,
-        admission_date: newPatientObj.admissionDate,
-        admitting_diagnosis: newPatientObj.admittingDiagnosis,
-        working_impression: newPatientObj.workingImpression,
-        endorsement: newPatientObj.endorsement,
-        status: newPatientObj.status,
-        physician: newPatientObj.physician,
-        is_referral: newPatientObj.isReferral
-      }]);
-
-    if (error) {
-      console.error('Error saving new patient to Supabase:', error);
-      alert('Failed to save admission record to database.');
-      return;
+    try {
+      await supabase
+        .from('patients')
+        .insert([{
+          id: newId,
+          ward_room: newPatientObj.wardRoom,
+          name: newPatientObj.name,
+          age_sex: newPatientObj.ageSex,
+          admission_date: newPatientObj.admissionDate,
+          admitting_diagnosis: newPatientObj.admittingDiagnosis,
+          working_impression: newPatientObj.workingImpression,
+          endorsement: newPatientObj.endorsement,
+          status: newPatientObj.status,
+          physician: newPatientObj.physician,
+          is_referral: newPatientObj.isReferral
+        }]);
+    } catch (err) {
+      console.log('Offline insert local only:', err);
     }
 
     setPatients(prev => [...prev, newPatientObj]);
@@ -974,15 +997,13 @@ export default function App() {
       endorsement: updatedEndorsement
     };
 
-    const { error } = await supabase
-      .from('patients')
-      .update(updatePayload)
-      .eq('id', selectedPatient.id);
-
-    if (error) {
-      console.error('Error updating clinical edits in Supabase:', error);
-      alert('Failed to save updates to database.');
-      return;
+    try {
+      await supabase
+        .from('patients')
+        .update(updatePayload)
+        .eq('id', selectedPatient.id);
+    } catch (err) {
+      console.log('Offline update local only:', err);
     }
 
     setPatients(prev => prev.map(p => {
@@ -1083,7 +1104,6 @@ export default function App() {
           <h2 style={styles.deptTitle}>Department of Internal Medicine</h2>
           <p style={styles.portalSubtitle}>Inpatient Duty Portal &bull; Census & Shift Management System</p>
           
-          {/* --- Device Mode Indicator (Toggle Hidden Permanently) --- */}
           <div style={{ marginBottom: '16px' }}>
             <span style={{ background: isEditorDevice ? '#dcfce7' : '#f1f5f9', color: isEditorDevice ? '#15803d' : '#475569', padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>
               {isEditorDevice ? '🖥️ This device has Editor Privileges' : '👁️ This device is in Read-Only Mode'}
