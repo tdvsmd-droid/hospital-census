@@ -1,4 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+// --- Initialize Supabase Client ---
+const SUPABASE_URL = 'https://spkjnzptrqrdfqizuhrv.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_Kx048-tmM-FMVfoxMSswwg_OOypiqge';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // --- Patient Modal Component (Self-Contained) ---
 function PatientModal({ room, allRooms, patient, onClose, onSave, onDischarge }) {
@@ -211,7 +217,6 @@ export default function App() {
   
   const lastViewedIdRef = useRef(null);
 
-  // Track if we are currently editing an archived snapshot instead of the live shift
   const [activeSnapshotId, setActiveSnapshotId] = useState(null);
 
   const [currentDateString, setCurrentDateString] = useState(() => {
@@ -261,54 +266,58 @@ export default function App() {
     status: 'Stable'
   });
 
-  const [patients, setPatients] = useState(() => {
-    const savedPatients = localStorage.getItem('jrrmdh_patients');
-    if (savedPatients) {
-      try { return JSON.parse(savedPatients); } catch (e) { console.error(e); }
-    }
-    return [
-      {
-        id: 1,
-        wardRoom: '303-1',
-        name: 'Dela Cruz, Juan',
-        ageSex: '65 / M',
-        admissionDate: '2026-08-20',
-        admittingDiagnosis: 'Community-Acquired Pneumonia, High Risk',
-        workingImpression: 'Resolving CAP, rule out secondary bacterial infection',
-        endorsement: {
-          currentCondition: 'Stable, conscious, coherent, mild productive cough.',
-          diagnostics: 'CBC pending. Chest X-ray showed clearing infiltrates.',
-          therapeutics: 'IV Levofloxacin 500mg OD, Salbutamol nebulization Q6H.',
-          remarks: 'Waiting for relative to bring PhilHealth forms.'
-        },
-        status: 'MGH',
-        physician: 'Dr. Maria Santos',
-        isReferral: false
-      },
-      {
-        id: 2,
-        wardRoom: 'Pending Room Assignment',
-        name: 'Santos, Maria',
-        ageSex: '52 / F',
-        admissionDate: '2026-08-28',
-        admittingDiagnosis: 'Type 2 Diabetes Mellitus with DKA',
-        workingImpression: 'Type 2 Diabetes Mellitus with DKA',
-        endorsement: {
-          currentCondition: 'Newly admitted, awaiting bed allocation.',
-          diagnostics: 'Initial labs ordered.',
-          therapeutics: 'Pending initial hospital orders.',
-          remarks: 'Needs strict monitoring of capillary blood sugar every 2 hours.'
-        },
-        status: 'New Admission',
-        physician: 'Dr. Juan Reyes',
-        isReferral: false
-      }
-    ];
-  });
+  // --- Supabase Data Loading on Startup ---
+  const [patients, setPatients] = useState([]);
 
   useEffect(() => {
-    localStorage.setItem('jrrmdh_patients', JSON.stringify(patients));
-  }, [patients]);
+    async function fetchPatients() {
+      const { data, error } = await supabase
+        .from('patients')
+        .select('*');
+
+      if (error) {
+        console.error('Error fetching patients from Supabase:', error);
+      } else if (data && data.length > 0) {
+        const formattedPatients = data.map(p => ({
+          id: p.id,
+          wardRoom: p.ward_room,
+          name: p.name,
+          ageSex: p.age_sex,
+          admissionDate: p.admission_date,
+          admittingDiagnosis: p.admitting_diagnosis,
+          workingImpression: p.working_impression,
+          endorsement: p.endorsement || {},
+          status: p.status,
+          physician: p.physician,
+          isReferral: p.is_referral
+        }));
+        setPatients(formattedPatients);
+      } else {
+        setPatients([
+          {
+            id: 1,
+            wardRoom: '303-1',
+            name: 'Dela Cruz, Juan',
+            ageSex: '65 / M',
+            admissionDate: '2026-08-20',
+            admittingDiagnosis: 'Community-Acquired Pneumonia, High Risk',
+            workingImpression: 'Resolving CAP, rule out secondary bacterial infection',
+            endorsement: {
+              currentCondition: 'Stable, conscious, coherent, mild productive cough.',
+              diagnostics: 'CBC pending. Chest X-ray showed clearing infiltrates.',
+              therapeutics: 'IV Levofloxacin 500mg OD, Salbutamol nebulization Q6H.',
+              remarks: 'Waiting for relative to bring PhilHealth forms.'
+            },
+            status: 'MGH',
+            physician: 'Dr. Maria Santos',
+            isReferral: false
+          }
+        ]);
+      }
+    }
+
+    fetchPatients();
+  }, []);
 
   const [dischargedArchive, setDischargedArchive] = useState(() => {
     const savedArchive = localStorage.getItem('jrrmdh_archive');
@@ -333,6 +342,68 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('jrrmdh_archive', JSON.stringify(dischargedArchive));
   }, [dischargedArchive]);
+
+  // --- Full Data Migration Function ---
+  const migrateAllDataToSupabase = async () => {
+    console.log('Starting full data migration to Supabase...');
+
+    // 1. Migrate Active Patients
+    if (patients && patients.length > 0) {
+      for (const p of patients) {
+        const { error } = await supabase
+          .from('patients')
+          .upsert([{
+            id: p.id || Date.now(),
+            ward_room: p.wardRoom,
+            name: p.name,
+            age_sex: p.ageSex,
+            admission_date: p.admissionDate,
+            admitting_diagnosis: p.admittingDiagnosis,
+            working_impression: p.workingImpression || p.admittingDiagnosis,
+            endorsement: p.endorsement || {},
+            status: p.status,
+            physician: p.physician,
+            is_referral: p.isReferral
+          }]);
+
+        if (error) {
+          console.error(`Error migrating patient ${p.name}:`, error);
+        }
+      }
+    }
+
+    // 2. Migrate Archive Data from LocalStorage
+    const savedArchive = localStorage.getItem('jrrmdh_archive');
+    if (savedArchive) {
+      try {
+        const archiveArray = JSON.parse(savedArchive);
+        for (const item of archiveArray) {
+          const { error } = await supabase
+            .from('archive')
+            .upsert([{
+              id: item.id || Date.now(),
+              name: item.name,
+              age_sex: item.ageSex,
+              admission_date: item.admissionDate,
+              discharge_date: item.dischargeDate,
+              admission_period: item.admissionPeriod,
+              physician: item.physician,
+              final_impression: item.finalImpression,
+              is_snapshot: item.isSnapshot || false,
+              snapshot_patients: item.snapshotPatients || []
+            }]);
+
+          if (error) {
+            console.error(`Error migrating archive record ${item.name}:`, error);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse local archive storage:', e);
+      }
+    }
+
+    alert('All tablet data successfully migrated to Supabase cloud!');
+  };
 
   // Section 1: Duty Date Search State
   const [dutyDateQuery, setDutyDateQuery] = useState('');
@@ -565,7 +636,7 @@ export default function App() {
     setIsTransferModalOpen(true);
   };
 
-  const executeTransfer = (e) => {
+  const executeTransfer = async (e) => {
     e.preventDefault();
     let targetRoom = isCustomTransfer ? customTransferText.trim() : transferTarget;
 
@@ -583,6 +654,21 @@ export default function App() {
     }
 
     const isNowReferral = targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom);
+
+    const { error } = await supabase
+      .from('patients')
+      .update({ 
+        ward_room: targetRoom, 
+        is_referral: isNowReferral,
+        status: (selectedPatient.status === 'Referral' && !isNowReferral) ? 'New Admission' : selectedPatient.status
+      })
+      .eq('id', selectedPatient.id);
+
+    if (error) {
+      console.error('Error updating room in Supabase:', error);
+      alert('Failed to update room in database.');
+      return;
+    }
 
     setPatients(prev => prev.map(p => {
       if (p.id === selectedPatient.id) {
@@ -602,7 +688,7 @@ export default function App() {
     alert(`Patient location updated to ${targetRoom}.`);
   };
 
-  const handleClearRoom = (idOrRoom, e) => {
+  const handleClearRoom = async (idOrRoom, e) => {
     if (e) e.stopPropagation();
     if (window.confirm("Clear this room and send the patient record directly to the Archive?")) {
       const patientToClear = patients.find(p => p.id === idOrRoom || p.wardRoom === idOrRoom);
@@ -632,6 +718,15 @@ export default function App() {
           }
           return [archivedRecord, ...prev];
         });
+
+        const { error } = await supabase
+          .from('patients')
+          .delete()
+          .eq('id', patientToClear.id);
+
+        if (error) {
+          console.error('Error deleting patient from Supabase:', error);
+        }
       }
 
       setPatients(prev => prev.filter(p => p.id !== idOrRoom && p.wardRoom !== idOrRoom));
@@ -642,7 +737,7 @@ export default function App() {
     }
   };
 
-  const handleRestoreArchivedPatient = (archivedRecord) => {
+  const handleRestoreArchivedPatient = async (archivedRecord) => {
     const confirmRestore = window.confirm(`Do you want to restore ${archivedRecord.name} back to the active census?`);
     if (!confirmRestore) return;
 
@@ -657,8 +752,9 @@ export default function App() {
       targetRoom = 'Pending Room Assignment';
     }
 
+    const newId = Date.now();
     const restoredObj = {
-      id: archivedRecord.id || Date.now(),
+      id: newId,
       wardRoom: targetRoom,
       name: archivedRecord.name,
       ageSex: archivedRecord.ageSex,
@@ -676,12 +772,34 @@ export default function App() {
       isReferral: targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom)
     };
 
+    const { error } = await supabase
+      .from('patients')
+      .insert([{
+        id: newId,
+        ward_room: restoredObj.wardRoom,
+        name: restoredObj.name,
+        age_sex: restoredObj.ageSex,
+        admission_date: restoredObj.admissionDate,
+        admitting_diagnosis: restoredObj.admittingDiagnosis,
+        working_impression: restoredObj.workingImpression,
+        endorsement: restoredObj.endorsement,
+        status: restoredObj.status,
+        physician: restoredObj.physician,
+        is_referral: restoredObj.isReferral
+      }]);
+
+    if (error) {
+      console.error('Error restoring patient to Supabase:', error);
+      alert('Failed to save restored patient to database.');
+      return;
+    }
+
     setPatients(prev => [...prev, restoredObj]);
     setDischargedArchive(prev => prev.filter(item => item.id !== archivedRecord.id));
     alert(`Successfully restored ${archivedRecord.name} to the active census!`);
   };
 
-  const handleSavePatientModal = (roomName, formData) => {
+  const handleSavePatientModal = async (roomName, formData) => {
     const finalRoom = roomName.trim();
     if (finalRoom !== 'Pending Room Assignment' && finalRoom !== '') {
       const occupant = patients.find(p => p.wardRoom.toLowerCase() === finalRoom.toLowerCase());
@@ -692,9 +810,10 @@ export default function App() {
 
     const isReferralSave = modalInitialRoom === '';
     const assignedStatus = isReferralSave ? 'Referral' : (formData.status || 'New Admission');
+    const newId = Date.now();
 
     const newPatientObj = {
-      id: Date.now(),
+      id: newId,
       wardRoom: finalRoom || 'Pending Room Assignment',
       name: formData.name,
       ageSex: `${formData.age} / ${formData.gender[0]}`,
@@ -711,6 +830,28 @@ export default function App() {
       physician: formData.physician || internistOnDuty,
       isReferral: isReferralSave
     };
+
+    const { error } = await supabase
+      .from('patients')
+      .insert([{
+        id: newId,
+        ward_room: newPatientObj.wardRoom,
+        name: newPatientObj.name,
+        age_sex: newPatientObj.ageSex,
+        admission_date: newPatientObj.admissionDate,
+        admitting_diagnosis: newPatientObj.admittingDiagnosis,
+        working_impression: newPatientObj.workingImpression,
+        endorsement: newPatientObj.endorsement,
+        status: newPatientObj.status,
+        physician: newPatientObj.physician,
+        is_referral: newPatientObj.isReferral
+      }]);
+
+    if (error) {
+      console.error('Error saving new patient to Supabase:', error);
+      alert('Failed to save admission record to database.');
+      return;
+    }
 
     setPatients(prev => [...prev, newPatientObj]);
     setIsModalOpen(false);
@@ -734,24 +875,48 @@ export default function App() {
     setIsEditingClinical(true);
   };
 
-  const saveClinicalEdits = (e) => {
+  const saveClinicalEdits = async (e) => {
     e.preventDefault();
+
+    const updatedEndorsement = {
+      currentCondition: clinicalForm.currentCondition,
+      diagnostics: clinicalForm.diagnostics,
+      therapeutics: clinicalForm.therapeutics,
+      remarks: clinicalForm.remarks
+    };
+
+    const updatePayload = {
+      name: isEditingCoreDetails ? clinicalForm.name : selectedPatient.name,
+      age_sex: isEditingCoreDetails ? clinicalForm.ageSex : selectedPatient.ageSex,
+      admission_date: isEditingCoreDetails ? clinicalForm.admissionDate : selectedPatient.admissionDate,
+      physician: isEditingCoreDetails ? clinicalForm.physician : selectedPatient.physician,
+      working_impression: clinicalForm.workingImpression,
+      status: clinicalForm.status,
+      endorsement: updatedEndorsement
+    };
+
+    const { error } = await supabase
+      .from('patients')
+      .update(updatePayload)
+      .eq('id', selectedPatient.id);
+
+    if (error) {
+      console.error('Error updating clinical edits in Supabase:', error);
+      alert('Failed to save updates to database.');
+      return;
+    }
+
     setPatients(prev => prev.map(p => {
       if (p.id === selectedPatient.id) {
         const updated = {
           ...p,
-          name: isEditingCoreDetails ? clinicalForm.name : p.name,
-          ageSex: isEditingCoreDetails ? clinicalForm.ageSex : p.ageSex,
-          admissionDate: isEditingCoreDetails ? clinicalForm.admissionDate : p.admissionDate,
-          physician: isEditingCoreDetails ? clinicalForm.physician : p.physician,
-          workingImpression: clinicalForm.workingImpression,
-          status: clinicalForm.status,
-          endorsement: {
-            currentCondition: clinicalForm.currentCondition,
-            diagnostics: clinicalForm.diagnostics,
-            therapeutics: clinicalForm.therapeutics,
-            remarks: clinicalForm.remarks
-          }
+          name: updatePayload.name,
+          ageSex: updatePayload.age_sex,
+          admissionDate: updatePayload.admission_date,
+          physician: updatePayload.physician,
+          workingImpression: updatePayload.working_impression,
+          status: updatePayload.status,
+          endorsement: updatedEndorsement
         };
         setSelectedPatient(updated);
         return updated;
@@ -920,6 +1085,9 @@ export default function App() {
             </button>
             <button style={styles.endorseSplashButton} onClick={handlePerformEndorsement}>
               🔄 Endorse Shift (New Duty Span & Handover)
+            </button>
+            <button style={styles.migrateButton} onClick={migrateAllDataToSupabase}>
+              🚀 Migrate All Local Data to Supabase
             </button>
           </div>
 
@@ -1679,6 +1847,7 @@ const styles = {
 
   enterButton: { background: '#2563eb', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   endorseSplashButton: { background: '#059669', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
+  migrateButton: { background: '#7c3aed', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   admitNewButton: { background: '#2563eb', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   archiveNavBtnHeader: { background: '#f59e0b', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   container: { maxWidth: '960px', margin: '30px auto', padding: '24px', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif', background: '#f8fafc', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' },

@@ -1,0 +1,10 @@
+Hospital Census
+
+Password: VV3idpfJCmOgpEaf
+
+Data API access: https://spkjnzptrqrdfqizuhrv.supabase.co/rest/v1/census_records
+
+Publishable Key: sb_publishable_Kx048-tmM-FMVfoxMSswwg_OOypiqge
+
+Project URL: https://spkjnzptrqrdfqizuhrv.supabase.co
+

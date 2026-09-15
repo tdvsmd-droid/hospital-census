@@ -339,14 +339,13 @@ export default function App() {
   const [selectedSnapshotOption, setSelectedSnapshotOption] = useState(null);
 
   // Section 2: Patient Details Search States (Tabbed)
-  const [activeDetailTab, setActiveDetailTab] = useState('name'); // 'name', 'admissionDate', 'dischargeDate', 'physician', 'impression'
+  const [activeDetailTab, setActiveDetailTab] = useState('name');
   const [nameQuery, setNameQuery] = useState('');
   const [admissionDateQuery, setAdmissionDateQuery] = useState('');
   const [dischargeDateQuery, setDischargeDateQuery] = useState('');
   const [physicianQuery, setPhysicianQuery] = useState('');
   const [impressionQuery, setImpressionQuery] = useState('');
 
-  // Scroll back to specific patient row upon returning from detail view
   useEffect(() => {
     if (!selectedPatient && lastViewedIdRef.current) {
       const el = document.getElementById(`patient-row-${lastViewedIdRef.current}`);
@@ -386,15 +385,25 @@ export default function App() {
   const movePatientOrder = (id, direction, e) => {
     if (e) e.stopPropagation();
     setPatients(prev => {
-      const index = prev.findIndex(p => p.id === id);
+      const targetPatient = prev.find(p => p.id === id);
+      if (!targetPatient) return prev;
+
+      const isRef = targetPatient.isReferral;
+      const subList = prev.filter(p => p.isReferral === isRef);
+      const otherList = prev.filter(p => p.isReferral !== isRef);
+
+      const index = subList.findIndex(p => p.id === id);
       if (index === -1) return prev;
+      
       const targetIndex = direction === 'up' ? index - 1 : index + 1;
-      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
-      const updated = [...prev];
-      const temp = updated[index];
-      updated[index] = updated[targetIndex];
-      updated[targetIndex] = temp;
-      return updated;
+      if (targetIndex < 0 || targetIndex >= subList.length) return prev;
+      
+      const updatedSub = [...subList];
+      const temp = updatedSub[index];
+      updatedSub[index] = updatedSub[targetIndex];
+      updatedSub[targetIndex] = temp;
+      
+      return isRef ? [...otherList, ...updatedSub] : [...updatedSub, ...otherList];
     });
   };
 
@@ -573,9 +582,16 @@ export default function App() {
       }
     }
 
+    const isNowReferral = targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom);
+
     setPatients(prev => prev.map(p => {
       if (p.id === selectedPatient.id) {
-        const updatedPatient = { ...p, wardRoom: targetRoom };
+        const updatedPatient = { 
+          ...p, 
+          wardRoom: targetRoom,
+          isReferral: isNowReferral,
+          status: (p.status === 'Referral' && !isNowReferral) ? 'New Admission' : p.status
+        };
         setSelectedPatient(updatedPatient);
         return updatedPatient;
       }
@@ -586,7 +602,6 @@ export default function App() {
     alert(`Patient location updated to ${targetRoom}.`);
   };
 
-  // Cleared patients go directly to the Archive with duplicate prevention
   const handleClearRoom = (idOrRoom, e) => {
     if (e) e.stopPropagation();
     if (window.confirm("Clear this room and send the patient record directly to the Archive?")) {
@@ -627,7 +642,6 @@ export default function App() {
     }
   };
 
-  // Restoration Logic from Archive
   const handleRestoreArchivedPatient = (archivedRecord) => {
     const confirmRestore = window.confirm(`Do you want to restore ${archivedRecord.name} back to the active census?`);
     if (!confirmRestore) return;
@@ -659,7 +673,7 @@ export default function App() {
       },
       status: archivedRecord.status === 'MGH' ? 'Stable' : (archivedRecord.status || 'Stable'),
       physician: archivedRecord.physician || internistOnDuty,
-      isReferral: archivedRecord.isReferral || false
+      isReferral: targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom)
     };
 
     setPatients(prev => [...prev, restoredObj]);
@@ -781,9 +795,8 @@ export default function App() {
   const referralPatientsList = filteredPatients.filter(p => p.isReferral);
 
   const splashActiveCount = patients.filter(p => p.wardRoom !== 'Pending Room Assignment' && !p.isReferral).length;
-  const splashPendingRoomCount = patients.filter(p => p.wardRoom === 'Pending Room Assignment').length;
+  const splashNewAdmissionsCount = patients.filter(p => p.wardRoom === 'Pending Room Assignment').length;
   const splashForDischargeCount = patients.filter(p => p.status === 'MGH' || p.status === 'For Discharge').length;
-  const splashDischargedCount = dischargedArchive.filter(rec => !rec.isSnapshot).length;
   const splashReferralCount = patients.filter(p => p.isReferral || isReferralLocation(p.wardRoom)).length;
 
   const matchingSnapshots = dischargedArchive.filter(rec => rec.isSnapshot && rec.admissionPeriod.toLowerCase().includes(dutyDateQuery.toLowerCase()));
@@ -880,16 +893,12 @@ export default function App() {
                   <span style={styles.splashMetricLabel}>Active</span>
                 </div>
                 <div style={styles.splashMetricItem}>
-                  <span style={styles.splashMetricNum}>{splashPendingRoomCount}</span>
-                  <span style={styles.splashMetricLabel}>Pending Room</span>
+                  <span style={styles.splashMetricNum}>{splashNewAdmissionsCount}</span>
+                  <span style={styles.splashMetricLabel}>New Admissions</span>
                 </div>
                 <div style={styles.splashMetricItem}>
                   <span style={styles.splashMetricNum}>{splashForDischargeCount}</span>
                   <span style={styles.splashMetricLabel}>For Discharge</span>
-                </div>
-                <div style={styles.splashMetricItem}>
-                  <span style={styles.splashMetricNum}>{splashDischargedCount}</span>
-                  <span style={styles.splashMetricLabel}>Discharged (Cleared)</span>
                 </div>
               </div>
             </div>
@@ -1255,7 +1264,7 @@ export default function App() {
               <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Location / Room:</strong> <span style={{ color: '#0284c7', fontWeight: 'bold' }}>{selectedPatient.wardRoom}</span></p>
               <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Attending Physician:</strong> {selectedPatient.physician || 'Not specified'}</p>
             </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
               <button style={styles.transferButton} onClick={openTransferModal}>
                 {selectedPatient.wardRoom === 'Pending Room Assignment' ? 'Assign Room/Bed' : 'Transfer Bed'}
               </button>
@@ -1548,55 +1557,86 @@ export default function App() {
         })}
       </div>
 
-      <h3 style={{ fontSize: '16px', color: '#1e3a8a', marginTop: '25px', marginBottom: '10px' }}>
+      <h3 style={{ fontSize: '16px', color: '#1e3a8a', marginTop: '25px', marginBottom: '6px' }}>
         IM Inpatients & Unassigned Admissions ({imPatientsList.length})
       </h3>
+      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange patient order.</p>
+      
       <div style={styles.listContainer}>
         {imPatientsList.length === 0 ? (
           <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No IM inpatients found.</p>
         ) : (
-          imPatientsList.map(patient => (
-            <div key={patient.id} id={`patient-row-${patient.id}`} style={styles.patientRow} onClick={() => setSelectedPatient(patient)}>
-              <div>
-                <h4 style={{ margin: '0 0 4px 0', color: '#1e3a8a', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
-                <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis} (Day {calculateHospitalDay(patient.admissionDate)})</p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={statusBadge(patient.status)}>{patient.status}</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
-                  <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+          imPatientsList.map(patient => {
+            return (
+              <div 
+                key={patient.id} 
+                id={`patient-row-${patient.id}`} 
+                style={{ 
+                  ...styles.patientRow, 
+                  cursor: 'pointer',
+                  borderTop: '5px solid #2563eb',
+                  background: 'white'
+                }} 
+                onClick={() => setSelectedPatient(patient)}
+              >
+                <div>
+                  <h4 style={{ margin: '0 0 4px 0', color: '#1e3a8a', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
+                  <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis} (Day {calculateHospitalDay(patient.admissionDate)})</p>
                 </div>
-                <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={statusBadge(patient.status)}>{patient.status}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
+                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+                  </div>
+                  <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
-      <h3 style={{ fontSize: '16px', color: '#059669', marginTop: '25px', marginBottom: '10px' }}>
-        External Department Referrals ({referralPatientsList.length})
-      </h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '25px', marginBottom: '6px', flexWrap: 'wrap', gap: '10px' }}>
+        <h3 style={{ fontSize: '16px', color: '#059669', margin: 0 }}>
+          External Department Referrals ({referralPatientsList.length})
+        </h3>
+      </div>
+      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange referral order.</p>
+
       <div style={styles.listContainer}>
         {referralPatientsList.length === 0 ? (
           <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No active referrals.</p>
         ) : (
-          referralPatientsList.map(patient => (
-            <div key={patient.id} id={`patient-row-${patient.id}`} style={{ ...styles.patientRow, borderLeftColor: '#10b981' }} onClick={() => setSelectedPatient(patient)}>
-              <div>
-                <h4 style={{ margin: '0 0 4px 0', color: '#059669', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
-                <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis}</p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={statusBadge(patient.status)}>{patient.status}</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
-                  <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+          referralPatientsList.map(patient => {
+            return (
+              <div 
+                key={patient.id} 
+                id={`patient-row-${patient.id}`} 
+                style={{ 
+                  ...styles.patientRow, 
+                  borderLeftColor: '#10b981',
+                  cursor: 'pointer',
+                  borderTop: '5px solid #10b981',
+                  background: 'white'
+                }} 
+                onClick={() => setSelectedPatient(patient)}
+              >
+                <div>
+                  <h4 style={{ margin: '0 0 4px 0', color: '#059669', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
+                  <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis}</p>
                 </div>
-                <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={statusBadge(patient.status)}>{patient.status}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
+                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+                  </div>
+                  <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -1631,7 +1671,7 @@ const styles = {
   splashMetricsSection: { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' },
   splashMetricBox: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px', textAlign: 'left' },
   splashMetricHeader: { margin: '0 0 10px 0', fontSize: '14px', fontWeight: '700', color: '#1e3a8a', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' },
-  splashMetricGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', textAlign: 'center' },
+  splashMetricGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' },
   splashMetricItem: { background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center' },
   splashMetricItemSingle: { background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '140px' },
   splashMetricNum: { fontSize: '18px', fontWeight: '800', color: '#0284c7', lineHeight: '1.2' },
@@ -1656,7 +1696,7 @@ const styles = {
   roomGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px', marginTop: '10px', maxHeight: '280px', overflowY: 'auto', padding: '8px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#ffffff' },
   roomCard: { padding: '10px', borderRadius: '8px', border: '1px solid', transition: 'all 0.2s ease' },
   listContainer: { display: 'flex', flexDirection: 'column', gap: '12px' },
-  patientRow: { background: 'white', padding: '18px 22px', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderLeft: '5px solid #2563eb' },
+  patientRow: { background: 'white', padding: '18px 22px', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderLeft: '5px solid #2563eb', transition: 'background 0.15s ease' },
   archiveTable: { width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', marginTop: '8px' },
   tableHeaderRow: { background: '#e2e8f0', color: '#1e293b' },
   th: { padding: '10px 12px', borderBottom: '2px solid #cbd5e1', fontWeight: 'bold' },
