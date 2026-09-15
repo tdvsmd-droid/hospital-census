@@ -343,33 +343,40 @@ export default function App() {
     localStorage.setItem('jrrmdh_archive', JSON.stringify(dischargedArchive));
   }, [dischargedArchive]);
 
-  // --- Full Data Migration Function ---
+  // --- Full Data Migration Function (Tablet Optimized) ---
   const migrateAllDataToSupabase = async () => {
-    console.log('Starting full data migration to Supabase...');
+    let successCount = 0;
+    let errorLog = [];
 
-    // 1. Migrate Active Patients
+    alert('Starting migration to Supabase cloud...');
+
+    // 1. Migrate Active Patients State
     if (patients && patients.length > 0) {
       for (const p of patients) {
         const { error } = await supabase
           .from('patients')
           .upsert([{
             id: p.id || Date.now(),
-            ward_room: p.wardRoom,
+            ward_room: p.wardRoom || 'Pending Room Assignment',
             name: p.name,
             age_sex: p.ageSex,
             admission_date: p.admissionDate,
             admitting_diagnosis: p.admittingDiagnosis,
             working_impression: p.workingImpression || p.admittingDiagnosis,
             endorsement: p.endorsement || {},
-            status: p.status,
-            physician: p.physician,
-            is_referral: p.isReferral
+            status: p.status || 'Stable',
+            physician: p.physician || internistOnDuty,
+            is_referral: p.isReferral || false
           }]);
 
         if (error) {
-          console.error(`Error migrating patient ${p.name}:`, error);
+          errorLog.push(`Active Patient (${p.name}): ${error.message}`);
+        } else {
+          successCount++;
         }
       }
+    } else {
+      errorLog.push('Active patients array was empty during migration attempt.');
     }
 
     // 2. Migrate Archive Data from LocalStorage
@@ -394,15 +401,20 @@ export default function App() {
             }]);
 
           if (error) {
-            console.error(`Error migrating archive record ${item.name}:`, error);
+            errorLog.push(`Archive Record (${item.name}): ${error.message}`);
           }
         }
       } catch (e) {
-        console.error('Failed to parse local archive storage:', e);
+        errorLog.push('Failed to parse local archive storage JSON.');
       }
     }
 
-    alert('All tablet data successfully migrated to Supabase cloud!');
+    // 3. Report results directly on the tablet screen
+    if (errorLog.length > 0) {
+      alert(`Migration completed with errors:\n\n- ${errorLog.join('\n- ')}`);
+    } else {
+      alert(`Success! Migrated ${successCount} active patient records and all archive logs to Supabase.`);
+    }
   };
 
   // Section 1: Duty Date Search State
