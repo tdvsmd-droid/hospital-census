@@ -251,7 +251,7 @@ export default function App() {
 
     try {
       await supabase
-        .from('settings')
+        .from('app_settings')
         .upsert([{ key, value }]);
     } catch (err) {
       console.error(`Error saving setting ${key} to Supabase:`, err);
@@ -264,7 +264,7 @@ export default function App() {
       // 1. Fetch Settings
       try {
         const { data: settingsData, error: settingsError } = await supabase
-          .from('settings')
+          .from('app_settings')
           .select('*');
 
         if (!settingsError && settingsData) {
@@ -280,7 +280,7 @@ export default function App() {
           });
         }
       } catch (err) {
-        console.log('Using local fallback for settings:', err);
+        console.log('Using local fallback for app_settings:', err);
       }
 
       // 2. Fetch Patients
@@ -359,7 +359,7 @@ export default function App() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
           fetchSettingsAndPatients();
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, () => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => {
           fetchSettingsAndPatients();
         })
         .subscribe();
@@ -418,8 +418,8 @@ export default function App() {
     alert('Starting migration to Supabase cloud...');
 
     // Sync settings first
-    await supabase.from('settings').upsert([{ key: 'datespan', value: currentDateString }]);
-    await supabase.from('settings').upsert([{ key: 'internist', value: internistOnDuty }]);
+    await supabase.from('app_settings').upsert([{ key: 'datespan', value: currentDateString }]);
+    await supabase.from('app_settings').upsert([{ key: 'internist', value: internistOnDuty }]);
 
     if (patients && patients.length > 0) {
       for (const p of patients) {
