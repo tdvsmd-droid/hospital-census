@@ -219,6 +219,22 @@ export default function App() {
 
   const [activeSnapshotId, setActiveSnapshotId] = useState(null);
 
+  // --- Device Mode States ---
+  const [isEditorDevice, setIsEditorDevice] = useState(() => {
+    return localStorage.getItem('jrrmdh_is_editor') === 'true';
+  });
+  const [editorSetupDone, setEditorSetupDone] = useState(() => {
+    return localStorage.getItem('jrrmdh_editor_claimed') === 'true';
+  });
+
+  const claimEditorDevice = () => {
+    localStorage.setItem('jrrmdh_is_editor', 'true');
+    localStorage.setItem('jrrmdh_editor_claimed', 'true');
+    setIsEditorDevice(true);
+    setEditorSetupDone(true);
+    alert('This device has been successfully registered as the Editor Device.');
+  };
+
   const [currentDateString, setCurrentDateString] = useState(() => {
     return localStorage.getItem('jrrmdh_datespan') || 'September 1 - September 2, 2026';
   });
@@ -266,7 +282,7 @@ export default function App() {
     status: 'Stable'
   });
 
-  // --- Supabase Data Loading on Startup ---
+  // --- Supabase Data Loading on Startup & Realtime Subscription ---
   const [patients, setPatients] = useState([]);
 
   useEffect(() => {
@@ -317,6 +333,18 @@ export default function App() {
     }
 
     fetchPatients();
+
+    // Setup Realtime Sync so read-only devices update automatically when editor makes changes
+    const channel = supabase
+      .channel('public:patients')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
+        fetchPatients();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const [dischargedArchive, setDischargedArchive] = useState(() => {
@@ -345,6 +373,11 @@ export default function App() {
 
   // --- Full Data Migration Function (Tablet Optimized) ---
   const migrateAllDataToSupabase = async () => {
+    if (!isEditorDevice) {
+      alert('Action restricted: Only the designated Editor Device can perform data migrations.');
+      return;
+    }
+
     let successCount = 0;
     let errorLog = [];
 
@@ -467,6 +500,10 @@ export default function App() {
 
   const movePatientOrder = (id, direction, e) => {
     if (e) e.stopPropagation();
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
     setPatients(prev => {
       const targetPatient = prev.find(p => p.id === id);
       if (!targetPatient) return prev;
@@ -491,6 +528,11 @@ export default function App() {
   };
 
   const handlePerformEndorsement = () => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
+
     if (activeSnapshotId) {
       alert("Please exit or save your current historical edit session before performing a new forward endorsement.");
       return;
@@ -533,6 +575,11 @@ export default function App() {
 
   const handleRevertEndorsement = (e) => {
     e.preventDefault();
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
+
     if (revertPassword !== 'IMjprizal000') {
       alert("Incorrect password.");
       return;
@@ -582,6 +629,11 @@ export default function App() {
   };
 
   const handleLoadSnapshotForEditing = (snapshot) => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
+
     const confirmLoad = window.confirm(
       `Do you want to load the duty span [ ${snapshot.admissionPeriod} ] into the active workspace for editing? You can add admissions, discharge, and save changes back to the archive.`
     );
@@ -632,16 +684,28 @@ export default function App() {
   };
 
   const openNewAdmissionModal = () => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
     setModalInitialRoom('Pending Room Assignment');
     setIsModalOpen(true);
   };
 
   const openAddReferralModal = () => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
     setModalInitialRoom('');
     setIsModalOpen(true);
   };
 
   const openTransferModal = () => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
     setTransferTarget(fixedRooms[0]);
     setIsCustomTransfer(false);
     setCustomTransferText('');
@@ -702,6 +766,11 @@ export default function App() {
 
   const handleClearRoom = async (idOrRoom, e) => {
     if (e) e.stopPropagation();
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
+
     if (window.confirm("Clear this room and send the patient record directly to the Archive?")) {
       const patientToClear = patients.find(p => p.id === idOrRoom || p.wardRoom === idOrRoom);
       
@@ -750,6 +819,11 @@ export default function App() {
   };
 
   const handleRestoreArchivedPatient = async (archivedRecord) => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
+
     const confirmRestore = window.confirm(`Do you want to restore ${archivedRecord.name} back to the active census?`);
     if (!confirmRestore) return;
 
@@ -870,6 +944,10 @@ export default function App() {
   };
 
   const startEditingClinical = (patient) => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
     setClinicalForm({
       name: patient.name || '',
       ageSex: patient.ageSex || '',
@@ -1016,6 +1094,25 @@ export default function App() {
           <h2 style={styles.deptTitle}>Department of Internal Medicine</h2>
           <p style={styles.portalSubtitle}>Inpatient Duty Portal &bull; Census & Shift Management System</p>
           
+          {/* --- Editor Toggle Setup Banner --- */}
+          {!editorSetupDone && (
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '14px', borderRadius: '8px', marginBottom: '20px' }}>
+              <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#1e40af', fontWeight: 'bold' }}>Device Mode Setup</p>
+              <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#1e3a8a' }}>Is this the main device that should have editor privileges? All other devices will automatically be read-only.</p>
+              <button onClick={claimEditorDevice} style={{ background: '#2563eb', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
+                Turn on Editor Mode for this Device
+              </button>
+            </div>
+          )}
+
+          {editorSetupDone && (
+            <div style={{ marginBottom: '16px' }}>
+              <span style={{ background: isEditorDevice ? '#dcfce7' : '#f1f5f9', color: isEditorDevice ? '#15803d' : '#475569', padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>
+                {isEditorDevice ? '🖥️ This device has Editor Privileges' : '👁️ This device is in Read-Only Mode'}
+              </span>
+            </div>
+          )}
+
           <div style={styles.splashInfoBox}>
             <div style={styles.infoRow}>
               <span style={styles.infoLabel}>📅 Duty Span:</span>
@@ -1046,15 +1143,17 @@ export default function App() {
                 ) : (
                   <>
                     <span style={styles.infoValue}>{internistOnDuty}</span>
-                    <button 
-                      style={styles.editPhysicianBtn} 
-                      onClick={() => {
-                        setTempInternist(internistOnDuty);
-                        setIsEditingInternist(true);
-                      }}
-                    >
-                      Change
-                    </button>
+                    {isEditorDevice && (
+                      <button 
+                        style={styles.editPhysicianBtn} 
+                        onClick={() => {
+                          setTempInternist(internistOnDuty);
+                          setIsEditingInternist(true);
+                        }}
+                      >
+                        Change
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -1095,45 +1194,51 @@ export default function App() {
             <button style={styles.enterButton} onClick={() => setCurrentView('census')}>
               Enter Daily Census Dashboard
             </button>
-            <button style={styles.endorseSplashButton} onClick={handlePerformEndorsement}>
-              🔄 Endorse Shift (New Duty Span & Handover)
-            </button>
-            <button style={styles.migrateButton} onClick={migrateAllDataToSupabase}>
-              🚀 Migrate All Local Data to Supabase
-            </button>
-          </div>
-
-          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '15px', textAlign: 'left' }}>
-            {!showRevertBox ? (
-              <button 
-                onClick={() => setShowRevertBox(true)} 
-                style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
-              >
-                ⚠️ Accidental endorsement? Click here to revert...
-              </button>
-            ) : (
-              <form onSubmit={handleRevertEndorsement} style={{ background: '#fef2f2', padding: '14px', borderRadius: '8px', border: '1px solid #fca5a5' }}>
-                <h4 style={{ margin: '0 0 6px 0', color: '#991b1b', fontSize: '14px' }}>Revert Accidental Shift Endorsement</h4>
-                <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#7f1d1d' }}>Enter password to restore previous duty span and census data from archive:</p>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input 
-                    type="password" 
-                    placeholder="Enter password..." 
-                    value={revertPassword}
-                    onChange={(e) => setRevertPassword(e.target.value)}
-                    style={{ ...styles.input, fontSize: '13px', padding: '6px 10px' }}
-                    required
-                  />
-                  <button type="submit" style={{ background: '#dc2626', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    Revert
-                  </button>
-                  <button type="button" onClick={() => { setShowRevertBox(false); setRevertPassword(''); }} style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
-                    Cancel
-                  </button>
-                </div>
-              </form>
+            {isEditorDevice && (
+              <>
+                <button style={styles.endorseSplashButton} onClick={handlePerformEndorsement}>
+                  🔄 Endorse Shift (New Duty Span & Handover)
+                </button>
+                <button style={styles.migrateButton} onClick={migrateAllDataToSupabase}>
+                  🚀 Migrate All Local Data to Supabase
+                </button>
+              </>
             )}
           </div>
+
+          {isEditorDevice && (
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '15px', textAlign: 'left' }}>
+              {!showRevertBox ? (
+                <button 
+                  onClick={() => setShowRevertBox(true)} 
+                  style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
+                >
+                  ⚠️ Accidental endorsement? Click here to revert...
+                </button>
+              ) : (
+                <form onSubmit={handleRevertEndorsement} style={{ background: '#fef2f2', padding: '14px', borderRadius: '8px', border: '1px solid #fca5a5' }}>
+                  <h4 style={{ margin: '0 0 6px 0', color: '#991b1b', fontSize: '14px' }}>Revert Accidental Shift Endorsement</h4>
+                  <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#7f1d1d' }}>Enter password to restore previous duty span and census data from archive:</p>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input 
+                      type="password" 
+                      placeholder="Enter password..." 
+                      value={revertPassword}
+                      onChange={(e) => setRevertPassword(e.target.value)}
+                      style={{ ...styles.input, fontSize: '13px', padding: '6px 10px' }}
+                      required
+                    />
+                    <button type="submit" style={{ background: '#dc2626', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      Revert
+                    </button>
+                    <button type="button" onClick={() => { setShowRevertBox(false); setRevertPassword(''); }} style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1188,12 +1293,14 @@ export default function App() {
                           <span>📦 {snap.name}</span>
                           <span style={{ background: '#fef3c7', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>{snap.admissionPeriod}</span>
                         </button>
-                        <button
-                          onClick={() => handleLoadSnapshotForEditing(snap)}
-                          style={{ background: '#d97706', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap' }}
-                        >
-                          ✏️ Edit This Shift
-                        </button>
+                        {isEditorDevice && (
+                          <button
+                            onClick={() => handleLoadSnapshotForEditing(snap)}
+                            style={{ background: '#d97706', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap' }}
+                          >
+                            ✏️ Edit This Shift
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1205,12 +1312,14 @@ export default function App() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
                     <h4 style={{ margin: 0, color: '#059669', fontSize: '16px' }}>📦 {selectedSnapshotOption.name}</h4>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button 
-                        onClick={() => handleLoadSnapshotForEditing(selectedSnapshotOption)}
-                        style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
-                      >
-                        ✏️ Load & Edit Full Shift Span
-                      </button>
+                      {isEditorDevice && (
+                        <button 
+                          onClick={() => handleLoadSnapshotForEditing(selectedSnapshotOption)}
+                          style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                        >
+                          ✏️ Load & Edit Full Shift Span
+                        </button>
+                      )}
                       <button onClick={() => setSelectedSnapshotOption(null)} style={{ background: '#e2e8f0', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>&larr; Choose Other Duty Span</button>
                     </div>
                   </div>
@@ -1390,7 +1499,7 @@ export default function App() {
                           <h4 style={{ margin: 0, color: '#1e3a8a', fontSize: '16px' }}>{record.name} <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'normal' }}>({record.ageSex})</span></h4>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <span style={styles.periodBadge}>Admitted: {record.admissionDate || 'N/A'} | Discharged: {record.dischargeDate || 'N/A'}</span>
-                            {belongsToActiveCycle && (
+                            {belongsToActiveCycle && isEditorDevice && (
                               <button 
                                 onClick={() => handleRestoreArchivedPatient(record)}
                                 style={{ background: '#059669', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}
@@ -1444,31 +1553,33 @@ export default function App() {
               <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Location / Room:</strong> <span style={{ color: '#0284c7', fontWeight: 'bold' }}>{selectedPatient.wardRoom}</span></p>
               <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Attending Physician:</strong> {selectedPatient.physician || 'Not specified'}</p>
             </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <button style={styles.transferButton} onClick={openTransferModal}>
-                {selectedPatient.wardRoom === 'Pending Room Assignment' ? 'Assign Room/Bed' : 'Transfer Bed'}
-              </button>
-              <button 
-                style={styles.editButton} 
-                onClick={() => {
-                  if (isEditingClinical) {
-                    setIsEditingClinical(false);
-                    setIsEditingCoreDetails(false);
-                  } else {
-                    startEditingClinical(selectedPatient);
-                  }
-                }}
-              >
-                {isEditingClinical ? 'Close Edit Form' : 'Edit Clinical Data'}
-              </button>
-            </div>
+            {isEditorDevice && (
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button style={styles.transferButton} onClick={openTransferModal}>
+                  {selectedPatient.wardRoom === 'Pending Room Assignment' ? 'Assign Room/Bed' : 'Transfer Bed'}
+                </button>
+                <button 
+                  style={styles.editButton} 
+                  onClick={() => {
+                    if (isEditingClinical) {
+                      setIsEditingClinical(false);
+                      setIsEditingCoreDetails(false);
+                    } else {
+                      startEditingClinical(selectedPatient);
+                    }
+                  }}
+                >
+                  {isEditingClinical ? 'Close Edit Form' : 'Edit Clinical Data'}
+                </button>
+              </div>
+            )}
           </div>
 
           <p style={{ marginTop: '12px', fontSize: '14px', color: '#475569' }}><strong>Admission Date:</strong> {selectedPatient.admissionDate} (Hospital Day {calculateHospitalDay(selectedPatient.admissionDate)})</p>
           
           <hr style={styles.divider} />
 
-          {isEditingClinical ? (
+          {isEditingClinical && isEditorDevice ? (
             <form onSubmit={saveClinicalEdits} style={styles.editFormBox}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                 <h3 style={{ margin: 0, color: '#1e3a8a', fontSize: '18px' }}>Update Clinical Details & Disposition</h3>
@@ -1580,12 +1691,14 @@ export default function App() {
             </>
           )}
 
-          <button style={styles.clearRoomButton} onClick={(e) => handleClearRoom(selectedPatient.id, e)}>
-            Clear Room & Archive Record
-          </button>
+          {isEditorDevice && (
+            <button style={styles.clearRoomButton} onClick={(e) => handleClearRoom(selectedPatient.id, e)}>
+              Clear Room & Archive Record
+            </button>
+          )}
         </div>
 
-        {isTransferModalOpen && (
+        {isTransferModalOpen && isEditorDevice && (
           <div style={styles.modalOverlay}>
             <div style={styles.modalCard}>
               <h3 style={{ margin: '0 0 15px 0', color: '#1e3a8a', fontSize: '18px' }}>Assign Room / Transfer &mdash; {selectedPatient.name}</h3>
@@ -1645,33 +1758,44 @@ export default function App() {
           <span style={{ color: '#b45309', fontWeight: 'bold', fontSize: '13px' }}>
             ⚠️ Editing Historical Duty Span: {currentDateString} ({internistOnDuty})
           </span>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
-              onClick={handleSaveArchivedShiftChanges}
-              style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
-            >
-              Save Changes to Archive & Exit
-            </button>
-            <button 
-              onClick={() => {
-                if (window.confirm("Discard changes and return to archive?")) {
-                  setActiveSnapshotId(null);
-                  setCurrentView('archive');
-                }
-              }}
-              style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
-            >
-              Cancel
-            </button>
-          </div>
+          {isEditorDevice && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                onClick={handleSaveArchivedShiftChanges}
+                style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
+              >
+                Save Changes to Archive & Exit
+              </button>
+              <button 
+                onClick={() => {
+                  if (window.confirm("Discard changes and return to archive?")) {
+                    setActiveSnapshotId(null);
+                    setCurrentView('archive');
+                  }
+                }}
+                style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       <div style={styles.headerRow}>
-        <h2 style={{ margin: 0, fontSize: '20px', color: '#1e3a8a' }}>IM on Duty: <span style={{ color: '#0284c7' }}>{internistOnDuty}</span></h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <h2 style={{ margin: 0, fontSize: '20px', color: '#1e3a8a' }}>IM on Duty: <span style={{ color: '#0284c7' }}>{internistOnDuty}</span></h2>
+          <span style={{ background: isEditorDevice ? '#dcfce7' : '#f1f5f9', color: isEditorDevice ? '#15803d' : '#475569', padding: '4px 10px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>
+            {isEditorDevice ? '🖥️ Editor' : '👁️ Read-Only'}
+          </span>
+        </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>+ Admit</button>
-          <button style={styles.referralButton} onClick={openAddReferralModal}>+ Referral</button>
+          {isEditorDevice && (
+            <>
+              <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>+ Admit</button>
+              <button style={styles.referralButton} onClick={openAddReferralModal}>+ Referral</button>
+            </>
+          )}
           <button style={styles.archiveNavBtnHeader} onClick={() => { setCurrentView('archive'); clearAllArchiveSearches(); }}>Archive</button>
           <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>Home</button>
         </div>
@@ -1740,7 +1864,9 @@ export default function App() {
       <h3 style={{ fontSize: '16px', color: '#1e3a8a', marginTop: '25px', marginBottom: '6px' }}>
         IM Inpatients & Unassigned Admissions ({imPatientsList.length})
       </h3>
-      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange patient order.</p>
+      {isEditorDevice && (
+        <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange patient order.</p>
+      )}
       
       <div style={styles.listContainer}>
         {imPatientsList.length === 0 ? (
@@ -1765,11 +1891,15 @@ export default function App() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={statusBadge(patient.status)}>{patient.status}</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
-                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
-                  </div>
-                  <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
+                  {isEditorDevice && (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
+                        <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+                      </div>
+                      <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -1782,7 +1912,9 @@ export default function App() {
           External Department Referrals ({referralPatientsList.length})
         </h3>
       </div>
-      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange referral order.</p>
+      {isEditorDevice && (
+        <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange referral order.</p>
+      )}
 
       <div style={styles.listContainer}>
         {referralPatientsList.length === 0 ? (
@@ -1808,11 +1940,15 @@ export default function App() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={statusBadge(patient.status)}>{patient.status}</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
-                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
-                  </div>
-                  <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
+                  {isEditorDevice && (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
+                        <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+                      </div>
+                      <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -1820,7 +1956,7 @@ export default function App() {
         )}
       </div>
 
-      {isModalOpen && (
+      {isModalOpen && isEditorDevice && (
         <PatientModal
           room={modalInitialRoom}
           allRooms={fixedRooms}
