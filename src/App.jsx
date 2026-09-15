@@ -405,84 +405,6 @@ export default function App() {
     localStorage.setItem('jrrmdh_archive', JSON.stringify(dischargedArchive));
   }, [dischargedArchive]);
 
-  // --- Full Data Migration Function ---
-  const migrateAllDataToSupabase = async () => {
-    if (!isEditorDevice) {
-      alert('Action restricted: Only the designated Editor Device can perform data migrations.');
-      return;
-    }
-
-    let successCount = 0;
-    let errorLog = [];
-
-    alert('Starting migration to Supabase cloud...');
-
-    // Sync settings first
-    await supabase.from('app_settings').upsert([{ key: 'datespan', value: currentDateString }]);
-    await supabase.from('app_settings').upsert([{ key: 'internist', value: internistOnDuty }]);
-
-    if (patients && patients.length > 0) {
-      for (const p of patients) {
-        const { error } = await supabase
-          .from('patients')
-          .upsert([{
-            id: p.id || Date.now(),
-            ward_room: p.wardRoom || 'Pending Room Assignment',
-            name: p.name,
-            age_sex: p.ageSex,
-            admission_date: p.admissionDate,
-            admitting_diagnosis: p.admittingDiagnosis,
-            working_impression: p.working_impression || p.admittingDiagnosis,
-            endorsement: p.endorsement || {},
-            status: p.status || 'Stable',
-            physician: p.physician || internistOnDuty,
-            is_referral: p.isReferral || false
-          }]);
-
-        if (error) {
-          errorLog.push(`Active Patient (${p.name}): ${error.message}`);
-        } else {
-          successCount++;
-        }
-      }
-    }
-
-    const savedArchive = localStorage.getItem('jrrmdh_archive');
-    if (savedArchive) {
-      try {
-        const archiveArray = JSON.parse(savedArchive);
-        for (const item of archiveArray) {
-          const { error } = await supabase
-            .from('archive')
-            .upsert([{
-              id: item.id || Date.now(),
-              name: item.name,
-              age_sex: item.ageSex,
-              admission_date: item.admissionDate,
-              discharge_date: item.dischargeDate,
-              admission_period: item.admissionPeriod,
-              physician: item.physician,
-              final_impression: item.finalImpression,
-              is_snapshot: item.isSnapshot || false,
-              snapshot_patients: item.snapshotPatients || []
-            }]);
-
-          if (error) {
-            errorLog.push(`Archive Record (${item.name}): ${error.message}`);
-          }
-        }
-      } catch (e) {
-        errorLog.push('Failed to parse local archive storage JSON.');
-      }
-    }
-
-    if (errorLog.length > 0) {
-      alert(`Migration completed with errors:\n\n- ${errorLog.join('\n- ')}`);
-    } else {
-      alert(`Success! Migrated settings, ${successCount} active patient records, and all archive logs to Supabase.`);
-    }
-  };
-
   // Search States
   const [dutyDateQuery, setDutyDateQuery] = useState('');
   const [selectedSnapshotOption, setSelectedSnapshotOption] = useState(null);
@@ -1213,14 +1135,9 @@ export default function App() {
               Enter Daily Census Dashboard
             </button>
             {isEditorDevice && (
-              <>
-                <button style={styles.endorseSplashButton} onClick={handlePerformEndorsement}>
-                  🔄 Endorse Shift (New Duty Span & Handover)
-                </button>
-                <button style={styles.migrateButton} onClick={migrateAllDataToSupabase}>
-                  🚀 Migrate All Local Data to Supabase
-                </button>
-              </>
+              <button style={styles.endorseSplashButton} onClick={handlePerformEndorsement}>
+                🔄 Endorse Shift (New Duty Span & Handover)
+              </button>
             )}
           </div>
 
@@ -2013,7 +1930,6 @@ const styles = {
 
   enterButton: { background: '#2563eb', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   endorseSplashButton: { background: '#059669', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
-  migrateButton: { background: '#7c3aed', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   admitNewButton: { background: '#2563eb', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   archiveNavBtnHeader: { background: '#f59e0b', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   container: { maxWidth: '960px', margin: '30px auto', padding: '24px', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif', background: '#f8fafc', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' },
