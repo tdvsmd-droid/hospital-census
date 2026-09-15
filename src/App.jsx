@@ -238,44 +238,51 @@ export default function App() {
   const [showRevertBox, setShowRevertBox] = useState(false);
   const [revertPassword, setRevertPassword] = useState('');
 
+  // --- Helper to sync setting to Supabase & localStorage ---
+  const updateCloudSetting = async (key, value) => {
+    if (key === 'datespan') {
+      setCurrentDateString(value);
+      localStorage.setItem('jrrmdh_datespan', value);
+    } else if (key === 'internist') {
+      setInternistOnDuty(value);
+      localStorage.setItem('jrrmdh_internist', value);
+    }
+
+    try {
+      await supabase
+        .from('settings')
+        .upsert([{ key, value }]);
+    } catch (err) {
+      console.error(`Error saving setting ${key} to Supabase:`, err);
+    }
+  };
+
+  // Fetch Duty Settings and Patients from Supabase on Mount & Realtime
   useEffect(() => {
-    localStorage.setItem('jrrmdh_datespan', currentDateString);
-  }, [currentDateString]);
+    async function fetchSettingsAndPatients() {
+      // 1. Fetch Settings
+      try {
+        const { data: settingsData, error: settingsError } = await supabase
+          .from('settings')
+          .select('*');
 
-  useEffect(() => {
-    localStorage.setItem('jrrmdh_internist', internistOnDuty);
-  }, [internistOnDuty]);
+        if (!settingsError && settingsData) {
+          settingsData.forEach(item => {
+            if (item.key === 'datespan' && item.value) {
+              setCurrentDateString(item.value);
+              localStorage.setItem('jrrmdh_datespan', item.value);
+            }
+            if (item.key === 'internist' && item.value) {
+              setInternistOnDuty(item.value);
+              localStorage.setItem('jrrmdh_internist', item.value);
+            }
+          });
+        }
+      } catch (err) {
+        console.log('Using local fallback for settings:', err);
+      }
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalInitialRoom, setModalInitialRoom] = useState('Pending Room Assignment');
-
-  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
-  const [transferTarget, setTransferTarget] = useState('');
-  const [customTransferText, setCustomTransferText] = useState('');
-  const [isCustomTransfer, setIsCustomTransfer] = useState(false);
-
-  const [isEditingClinical, setIsEditingClinical] = useState(false);
-  const [isEditingCoreDetails, setIsEditingCoreDetails] = useState(false);
-
-  const [clinicalForm, setClinicalForm] = useState({
-    name: '',
-    ageSex: '',
-    admissionDate: '',
-    physician: '',
-    admittingDiagnosis: '',
-    workingImpression: '',
-    currentCondition: '',
-    diagnostics: '',
-    therapeutics: '',
-    remarks: '',
-    status: 'Stable'
-  });
-
-  // --- Supabase Data Loading with LocalStorage Offline Fallback ---
-  const [patients, setPatients] = useState([]);
-
-  useEffect(() => {
-    async function fetchPatients() {
+      // 2. Fetch Patients
       try {
         const { data, error } = await supabase
           .from('patients')
@@ -319,7 +326,6 @@ export default function App() {
           console.error('Error parsing local patients:', e);
         }
       }
-      // Default initial fallback data
       setPatients([
         {
           id: 1,
@@ -342,15 +348,18 @@ export default function App() {
       ]);
     }
 
-    fetchPatients();
+    fetchSettingsAndPatients();
 
-    // Setup Realtime Sync
+    // Setup Realtime Sync for both Patients and Settings
     let channel;
     try {
       channel = supabase
-        .channel('public:patients')
+        .channel('public:jrrmdh_live')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
-          fetchPatients();
+          fetchSettingsAndPatients();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, () => {
+          fetchSettingsAndPatients();
         })
         .subscribe();
     } catch (e) {
@@ -406,6 +415,10 @@ export default function App() {
     let errorLog = [];
 
     alert('Starting migration to Supabase cloud...');
+
+    // Sync settings first
+    await supabase.from('settings').upsert([{ key: 'datespan', value: currentDateString }]);
+    await supabase.from('settings').upsert([{ key: 'internist', value: internistOnDuty }]);
 
     if (patients && patients.length > 0) {
       for (const p of patients) {
@@ -465,7 +478,7 @@ export default function App() {
     if (errorLog.length > 0) {
       alert(`Migration completed with errors:\n\n- ${errorLog.join('\n- ')}`);
     } else {
-      alert(`Success! Migrated ${successCount} active patient records and all archive logs to Supabase.`);
+      alert(`Success! Migrated settings, ${successCount} active patient records, and all archive logs to Supabase.`);
     }
   };
 
@@ -545,7 +558,7 @@ export default function App() {
     });
   };
 
-  const handlePerformEndorsement = () => {
+  const handlePerformEndorsement = async () => {
     if (!isEditorDevice) {
       alert('This device is in Read-Only mode.');
       return;
@@ -585,13 +598,14 @@ export default function App() {
     };
 
     setDischargedArchive(prev => [snapshotRecord, ...prev]);
-    setInternistOnDuty(incomingDoctor);
-    setCurrentDateString(dutyPeriodSpan);
-    localStorage.setItem('jrrmdh_datespan', dutyPeriodSpan);
+    
+    await updateCloudSetting('internist', incomingDoctor);
+    await updateCloudSetting('datespan', dutyPeriodSpan);
+
     alert(`Shift successfully endorsed to ${incomingDoctor}!\nDuty Period updated to [ ${dutyPeriodSpan} ]. Snapshot saved to archives.`);
   };
 
-  const handleRevertEndorsement = (e) => {
+  const handleRevertEndorsement = async (e) => {
     e.preventDefault();
     if (!isEditorDevice) {
       alert('This device is in Read-Only mode.');
@@ -617,22 +631,22 @@ export default function App() {
         setPatients(targetSnapshot.snapshotPatients);
       }
 
+      let targetInternist = 'Dr. Maria Santos';
       if (targetSnapshot.previousInternist) {
-        setInternistOnDuty(targetSnapshot.previousInternist);
+        targetInternist = targetSnapshot.previousInternist;
       } else {
         const nameMatch = targetSnapshot.name.match(/\((.*?) ->/);
         if (nameMatch && nameMatch[1]) {
-          setInternistOnDuty(nameMatch[1]);
+          targetInternist = nameMatch[1];
         }
       }
+      await updateCloudSetting('internist', targetInternist);
 
+      let targetDateStr = targetSnapshot.admissionPeriod;
       if (targetSnapshot.previousDateString) {
-        setCurrentDateString(targetSnapshot.previousDateString);
-        localStorage.setItem('jrrmdh_datespan', targetSnapshot.previousDateString);
-      } else {
-        setCurrentDateString(targetSnapshot.admissionPeriod);
-        localStorage.setItem('jrrmdh_datespan', targetSnapshot.admissionPeriod);
+        targetDateStr = targetSnapshot.previousDateString;
       }
+      await updateCloudSetting('datespan', targetDateStr);
 
       setDischargedArchive(prev => prev.filter((_, idx) => idx !== latestSnapshotIndex));
       setActiveSnapshotId(null);
@@ -646,7 +660,7 @@ export default function App() {
     }
   };
 
-  const handleLoadSnapshotForEditing = (snapshot) => {
+  const handleLoadSnapshotForEditing = async (snapshot) => {
     if (!isEditorDevice) {
       alert('This device is in Read-Only mode.');
       return;
@@ -657,15 +671,19 @@ export default function App() {
     );
     if (!confirmLoad) return;
 
-    setCurrentDateString(snapshot.admissionPeriod);
+    await updateCloudSetting('datespan', snapshot.admissionPeriod);
+
+    let targetInternist = internistOnDuty;
     if (snapshot.previousInternist) {
-      setInternistOnDuty(snapshot.previousInternist);
+      targetInternist = snapshot.previousInternist;
     } else {
       const nameMatch = snapshot.name.match(/\((.*?) ->/);
       if (nameMatch && nameMatch[1]) {
-        setInternistOnDuty(nameMatch[1]);
+        targetInternist = nameMatch[1];
       }
     }
+    await updateCloudSetting('internist', targetInternist);
+
     if (snapshot.snapshotPatients) {
       setPatients(snapshot.snapshotPatients);
     }
@@ -1129,8 +1147,10 @@ export default function App() {
                     />
                     <button 
                       style={styles.savePhysicianBtn} 
-                      onClick={() => {
-                        if(tempInternist.trim()) setInternistOnDuty(tempInternist.trim());
+                      onClick={async () => {
+                        if(tempInternist.trim()) {
+                          await updateCloudSetting('internist', tempInternist.trim());
+                        }
                         setIsEditingInternist(false);
                       }}
                     >
