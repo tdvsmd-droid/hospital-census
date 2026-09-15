@@ -219,13 +219,18 @@ export default function App() {
 
   const [activeSnapshotId, setActiveSnapshotId] = useState(null);
 
-  const [currentDateString, setCurrentDateString] = useState(() => {
-    return localStorage.getItem('jrrmdh_datespan') || 'September 1 - September 2, 2026';
+  // Device Role State (Original Tablet vs Read-Only Secondary Device)
+  const [isOriginalTablet, setIsOriginalTablet] = useState(() => {
+    const saved = localStorage.getItem('jrrmdh_original_tablet');
+    return saved !== null ? JSON.parse(saved) : true;
   });
 
-  const [internistOnDuty, setInternistOnDuty] = useState(() => {
-    return localStorage.getItem('jrrmdh_internist') || 'Dr. Maria Santos';
-  });
+  useEffect(() => {
+    localStorage.setItem('jrrmdh_original_tablet', JSON.stringify(isOriginalTablet));
+  }, [isOriginalTablet]);
+
+  const [currentDateString, setCurrentDateString] = useState('September 1 - September 2, 2026');
+  const [internistOnDuty, setInternistOnDuty] = useState('Dr. Maria Santos');
   const [isEditingInternist, setIsEditingInternist] = useState(false);
   const [tempInternist, setTempInternist] = useState('');
 
@@ -233,44 +238,24 @@ export default function App() {
   const [showRevertBox, setShowRevertBox] = useState(false);
   const [revertPassword, setRevertPassword] = useState('');
 
-  useEffect(() => {
-    localStorage.setItem('jrrmdh_datespan', currentDateString);
-  }, [currentDateString]);
-
-  useEffect(() => {
-    localStorage.setItem('jrrmdh_internist', internistOnDuty);
-  }, [internistOnDuty]);
-
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalInitialRoom, setModalInitialRoom] = useState('Pending Room Assignment');
-
-  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
-  const [transferTarget, setTransferTarget] = useState('');
-  const [customTransferText, setCustomTransferText] = useState('');
-  const [isCustomTransfer, setIsCustomTransfer] = useState(false);
-
-  const [isEditingClinical, setIsEditingClinical] = useState(false);
-  const [isEditingCoreDetails, setIsEditingCoreDetails] = useState(false);
-
-  const [clinicalForm, setClinicalForm] = useState({
-    name: '',
-    ageSex: '',
-    admissionDate: '',
-    physician: '',
-    admittingDiagnosis: '',
-    workingImpression: '',
-    currentCondition: '',
-    diagnostics: '',
-    therapeutics: '',
-    remarks: '',
-    status: 'Stable'
-  });
-
-  // --- Supabase Data Loading on Startup ---
+  // --- Load Settings & Patients from Supabase on Startup ---
   const [patients, setPatients] = useState([]);
 
   useEffect(() => {
-    async function fetchPatients() {
+    async function fetchData() {
+      // 1. Fetch Settings (Duty Span & Internist)
+      const { data: settingsData, error: settingsError } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('id', 1)
+        .single();
+
+      if (!settingsError && settingsData) {
+        if (settingsData.datespan) setCurrentDateString(settingsData.datespan);
+        if (settingsData.internist) setInternistOnDuty(settingsData.internist);
+      }
+
+      // 2. Fetch Patients
       const { data, error } = await supabase
         .from('patients')
         .select('*');
@@ -316,8 +301,18 @@ export default function App() {
       }
     }
 
-    fetchPatients();
+    fetchData();
   }, []);
+
+  // Sync settings helper function to Supabase
+  const updateCloudSettings = async (newDateSpan, newInternist) => {
+    const { error } = await supabase
+      .from('settings')
+      .upsert([{ id: 1, datespan: newDateSpan, internist: newInternist }]);
+    if (error) {
+      console.error('Error updating settings in Supabase:', error);
+    }
+  };
 
   const [dischargedArchive, setDischargedArchive] = useState(() => {
     const savedArchive = localStorage.getItem('jrrmdh_archive');
@@ -345,12 +340,16 @@ export default function App() {
 
   // --- Full Data Migration Function (Tablet Optimized) ---
   const migrateAllDataToSupabase = async () => {
+    if (!isOriginalTablet) {
+      alert("This device is in Read-Only mode. Only the original tablet can perform migrations.");
+      return;
+    }
+
     let successCount = 0;
     let errorLog = [];
 
     alert('Starting migration to Supabase cloud...');
 
-    // 1. Migrate Active Patients State
     if (patients && patients.length > 0) {
       for (const p of patients) {
         const { error } = await supabase
@@ -379,7 +378,6 @@ export default function App() {
       errorLog.push('Active patients array was empty during migration attempt.');
     }
 
-    // 2. Migrate Archive Data from LocalStorage
     const savedArchive = localStorage.getItem('jrrmdh_archive');
     if (savedArchive) {
       try {
@@ -409,7 +407,6 @@ export default function App() {
       }
     }
 
-    // 3. Report results directly on the tablet screen
     if (errorLog.length > 0) {
       alert(`Migration completed with errors:\n\n- ${errorLog.join('\n- ')}`);
     } else {
@@ -467,6 +464,10 @@ export default function App() {
 
   const movePatientOrder = (id, direction, e) => {
     if (e) e.stopPropagation();
+    if (!isOriginalTablet) {
+      alert("Read-Only Device: Only the original tablet can reorder patients.");
+      return;
+    }
     setPatients(prev => {
       const targetPatient = prev.find(p => p.id === id);
       if (!targetPatient) return prev;
@@ -491,6 +492,11 @@ export default function App() {
   };
 
   const handlePerformEndorsement = () => {
+    if (!isOriginalTablet) {
+      alert("Read-Only Device: Only the original tablet can endorse shifts.");
+      return;
+    }
+
     if (activeSnapshotId) {
       alert("Please exit or save your current historical edit session before performing a new forward endorsement.");
       return;
@@ -527,12 +533,18 @@ export default function App() {
     setDischargedArchive(prev => [snapshotRecord, ...prev]);
     setInternistOnDuty(incomingDoctor);
     setCurrentDateString(dutyPeriodSpan);
-    localStorage.setItem('jrrmdh_datespan', dutyPeriodSpan);
+    updateCloudSettings(dutyPeriodSpan, incomingDoctor);
+
     alert(`Shift successfully endorsed to ${incomingDoctor}!\nDuty Period updated to [ ${dutyPeriodSpan} ]. Snapshot saved to archives.`);
   };
 
   const handleRevertEndorsement = (e) => {
     e.preventDefault();
+    if (!isOriginalTablet) {
+      alert("Read-Only Device: Only the original tablet can revert endorsements.");
+      return;
+    }
+
     if (revertPassword !== 'IMjprizal000') {
       alert("Incorrect password.");
       return;
@@ -552,22 +564,28 @@ export default function App() {
         setPatients(targetSnapshot.snapshotPatients);
       }
 
+      let restoredInternist = internistOnDuty;
       if (targetSnapshot.previousInternist) {
-        setInternistOnDuty(targetSnapshot.previousInternist);
+        restoredInternist = targetSnapshot.previousInternist;
+        setInternistOnDuty(restoredInternist);
       } else {
         const nameMatch = targetSnapshot.name.match(/\((.*?) ->/);
         if (nameMatch && nameMatch[1]) {
-          setInternistOnDuty(nameMatch[1]);
+          restoredInternist = nameMatch[1];
+          setInternistOnDuty(restoredInternist);
         }
       }
 
+      let restoredDate = currentDateString;
       if (targetSnapshot.previousDateString) {
-        setCurrentDateString(targetSnapshot.previousDateString);
-        localStorage.setItem('jrrmdh_datespan', targetSnapshot.previousDateString);
+        restoredDate = targetSnapshot.previousDateString;
+        setCurrentDateString(restoredDate);
       } else {
-        setCurrentDateString(targetSnapshot.admissionPeriod);
-        localStorage.setItem('jrrmdh_datespan', targetSnapshot.admissionPeriod);
+        restoredDate = targetSnapshot.admissionPeriod;
+        setCurrentDateString(restoredDate);
       }
+
+      updateCloudSettings(restoredDate, restoredInternist);
 
       setDischargedArchive(prev => prev.filter((_, idx) => idx !== latestSnapshotIndex));
       setActiveSnapshotId(null);
@@ -582,24 +600,33 @@ export default function App() {
   };
 
   const handleLoadSnapshotForEditing = (snapshot) => {
+    if (!isOriginalTablet) {
+      alert("Read-Only Device: Only the original tablet can load and edit historical shifts.");
+      return;
+    }
+
     const confirmLoad = window.confirm(
       `Do you want to load the duty span [ ${snapshot.admissionPeriod} ] into the active workspace for editing? You can add admissions, discharge, and save changes back to the archive.`
     );
     if (!confirmLoad) return;
 
     setCurrentDateString(snapshot.admissionPeriod);
+    let loadedInternist = internistOnDuty;
     if (snapshot.previousInternist) {
-      setInternistOnDuty(snapshot.previousInternist);
+      loadedInternist = snapshot.previousInternist;
+      setInternistOnDuty(loadedInternist);
     } else {
       const nameMatch = snapshot.name.match(/\((.*?) ->/);
       if (nameMatch && nameMatch[1]) {
-        setInternistOnDuty(nameMatch[1]);
+        loadedInternist = nameMatch[1];
+        setInternistOnDuty(loadedInternist);
       }
     }
     if (snapshot.snapshotPatients) {
       setPatients(snapshot.snapshotPatients);
     }
     
+    updateCloudSettings(snapshot.admissionPeriod, loadedInternist);
     setActiveSnapshotId(snapshot.id);
     setCurrentView('census');
     alert(`Loaded duty span [ ${snapshot.admissionPeriod} ] for editing. Make your changes and click 'Save Changes to Archive' when finished.`);
@@ -632,16 +659,28 @@ export default function App() {
   };
 
   const openNewAdmissionModal = () => {
+    if (!isOriginalTablet) {
+      alert("Read-Only Device: Only the original tablet can admit patients.");
+      return;
+    }
     setModalInitialRoom('Pending Room Assignment');
     setIsModalOpen(true);
   };
 
   const openAddReferralModal = () => {
+    if (!isOriginalTablet) {
+      alert("Read-Only Device: Only the original tablet can add referrals.");
+      return;
+    }
     setModalInitialRoom('');
     setIsModalOpen(true);
   };
 
   const openTransferModal = () => {
+    if (!isOriginalTablet) {
+      alert("Read-Only Device: Only the original tablet can transfer patients.");
+      return;
+    }
     setTransferTarget(fixedRooms[0]);
     setIsCustomTransfer(false);
     setCustomTransferText('');
@@ -702,6 +741,11 @@ export default function App() {
 
   const handleClearRoom = async (idOrRoom, e) => {
     if (e) e.stopPropagation();
+    if (!isOriginalTablet) {
+      alert("Read-Only Device: Only the original tablet can clear rooms and archive patient records.");
+      return;
+    }
+
     if (window.confirm("Clear this room and send the patient record directly to the Archive?")) {
       const patientToClear = patients.find(p => p.id === idOrRoom || p.wardRoom === idOrRoom);
       
@@ -750,6 +794,11 @@ export default function App() {
   };
 
   const handleRestoreArchivedPatient = async (archivedRecord) => {
+    if (!isOriginalTablet) {
+      alert("Read-Only Device: Only the original tablet can restore archived patients.");
+      return;
+    }
+
     const confirmRestore = window.confirm(`Do you want to restore ${archivedRecord.name} back to the active census?`);
     if (!confirmRestore) return;
 
@@ -870,6 +919,10 @@ export default function App() {
   };
 
   const startEditingClinical = (patient) => {
+    if (!isOriginalTablet) {
+      alert("Read-Only Device: Only the original tablet can edit clinical data.");
+      return;
+    }
     setClinicalForm({
       name: patient.name || '',
       ageSex: patient.ageSex || '',
@@ -1016,6 +1069,18 @@ export default function App() {
           <h2 style={styles.deptTitle}>Department of Internal Medicine</h2>
           <p style={styles.portalSubtitle}>Inpatient Duty Portal &bull; Census & Shift Management System</p>
           
+          <div style={{ background: isOriginalTablet ? '#f0fdf4' : '#eff6ff', border: '1px solid', borderColor: isOriginalTablet ? '#bbf7d0' : '#bfdbfe', padding: '10px 14px', borderRadius: '8px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', fontWeight: 'bold', color: isOriginalTablet ? '#166534' : '#1e40af' }}>
+              Device Mode: {isOriginalTablet ? '📱 Original Editable Tablet' : '👁️ Read-Only Viewer Device'}
+            </span>
+            <button 
+              onClick={() => setIsOriginalTablet(!isOriginalTablet)}
+              style={{ background: isOriginalTablet ? '#16a34a' : '#2563eb', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              Switch to {isOriginalTablet ? 'Read-Only' : 'Editable'}
+            </button>
+          </div>
+
           <div style={styles.splashInfoBox}>
             <div style={styles.infoRow}>
               <span style={styles.infoLabel}>📅 Duty Span:</span>
@@ -1024,7 +1089,7 @@ export default function App() {
             <div style={styles.infoRow}>
               <span style={styles.infoLabel}>👨‍⚕️ IM on Duty:</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {isEditingInternist ? (
+                {isEditingInternist && isOriginalTablet ? (
                   <>
                     <input 
                       type="text" 
@@ -1036,7 +1101,11 @@ export default function App() {
                     <button 
                       style={styles.savePhysicianBtn} 
                       onClick={() => {
-                        if(tempInternist.trim()) setInternistOnDuty(tempInternist.trim());
+                        if(tempInternist.trim()) {
+                          const updatedName = tempInternist.trim();
+                          setInternistOnDuty(updatedName);
+                          updateCloudSettings(currentDateString, updatedName);
+                        }
                         setIsEditingInternist(false);
                       }}
                     >
@@ -1046,15 +1115,17 @@ export default function App() {
                 ) : (
                   <>
                     <span style={styles.infoValue}>{internistOnDuty}</span>
-                    <button 
-                      style={styles.editPhysicianBtn} 
-                      onClick={() => {
-                        setTempInternist(internistOnDuty);
-                        setIsEditingInternist(true);
-                      }}
-                    >
-                      Change
-                    </button>
+                    {isOriginalTablet && (
+                      <button 
+                        style={styles.editPhysicianBtn} 
+                        onClick={() => {
+                          setTempInternist(internistOnDuty);
+                          setIsEditingInternist(true);
+                        }}
+                      >
+                        Change
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -1095,45 +1166,51 @@ export default function App() {
             <button style={styles.enterButton} onClick={() => setCurrentView('census')}>
               Enter Daily Census Dashboard
             </button>
-            <button style={styles.endorseSplashButton} onClick={handlePerformEndorsement}>
-              🔄 Endorse Shift (New Duty Span & Handover)
-            </button>
-            <button style={styles.migrateButton} onClick={migrateAllDataToSupabase}>
-              🚀 Migrate All Local Data to Supabase
-            </button>
-          </div>
-
-          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '15px', textAlign: 'left' }}>
-            {!showRevertBox ? (
-              <button 
-                onClick={() => setShowRevertBox(true)} 
-                style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
-              >
-                ⚠️ Accidental endorsement? Click here to revert...
-              </button>
-            ) : (
-              <form onSubmit={handleRevertEndorsement} style={{ background: '#fef2f2', padding: '14px', borderRadius: '8px', border: '1px solid #fca5a5' }}>
-                <h4 style={{ margin: '0 0 6px 0', color: '#991b1b', fontSize: '14px' }}>Revert Accidental Shift Endorsement</h4>
-                <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#7f1d1d' }}>Enter password to restore previous duty span and census data from archive:</p>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input 
-                    type="password" 
-                    placeholder="Enter password..." 
-                    value={revertPassword}
-                    onChange={(e) => setRevertPassword(e.target.value)}
-                    style={{ ...styles.input, fontSize: '13px', padding: '6px 10px' }}
-                    required
-                  />
-                  <button type="submit" style={{ background: '#dc2626', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    Revert
-                  </button>
-                  <button type="button" onClick={() => { setShowRevertBox(false); setRevertPassword(''); }} style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
-                    Cancel
-                  </button>
-                </div>
-              </form>
+            {isOriginalTablet && (
+              <>
+                <button style={styles.endorseSplashButton} onClick={handlePerformEndorsement}>
+                  🔄 Endorse Shift (New Duty Span & Handover)
+                </button>
+                <button style={styles.migrateButton} onClick={migrateAllDataToSupabase}>
+                  🚀 Migrate All Local Data to Supabase
+                </button>
+              </>
             )}
           </div>
+
+          {isOriginalTablet && (
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '15px', textAlign: 'left' }}>
+              {!showRevertBox ? (
+                <button 
+                  onClick={() => setShowRevertBox(true)} 
+                  style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
+                >
+                  ⚠️ Accidental endorsement? Click here to revert...
+                </button>
+              ) : (
+                <form onSubmit={handleRevertEndorsement} style={{ background: '#fef2f2', padding: '14px', borderRadius: '8px', border: '1px solid #fca5a5' }}>
+                  <h4 style={{ margin: '0 0 6px 0', color: '#991b1b', fontSize: '14px' }}>Revert Accidental Shift Endorsement</h4>
+                  <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#7f1d1d' }}>Enter password to restore previous duty span and census data from archive:</p>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input 
+                      type="password" 
+                      placeholder="Enter password..." 
+                      value={revertPassword}
+                      onChange={(e) => setRevertPassword(e.target.value)}
+                      style={{ ...styles.input, fontSize: '13px', padding: '6px 10px' }}
+                      required
+                    />
+                    <button type="submit" style={{ background: '#dc2626', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      Revert
+                    </button>
+                    <button type="button" onClick={() => { setShowRevertBox(false); setRevertPassword(''); }} style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1188,12 +1265,14 @@ export default function App() {
                           <span>📦 {snap.name}</span>
                           <span style={{ background: '#fef3c7', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>{snap.admissionPeriod}</span>
                         </button>
-                        <button
-                          onClick={() => handleLoadSnapshotForEditing(snap)}
-                          style={{ background: '#d97706', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap' }}
-                        >
-                          ✏️ Edit This Shift
-                        </button>
+                        {isOriginalTablet && (
+                          <button
+                            onClick={() => handleLoadSnapshotForEditing(snap)}
+                            style={{ background: '#d97706', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap' }}
+                          >
+                            ✏️ Edit This Shift
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1205,12 +1284,14 @@ export default function App() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
                     <h4 style={{ margin: 0, color: '#059669', fontSize: '16px' }}>📦 {selectedSnapshotOption.name}</h4>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button 
-                        onClick={() => handleLoadSnapshotForEditing(selectedSnapshotOption)}
-                        style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
-                      >
-                        ✏️ Load & Edit Full Shift Span
-                      </button>
+                      {isOriginalTablet && (
+                        <button 
+                          onClick={() => handleLoadSnapshotForEditing(selectedSnapshotOption)}
+                          style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                        >
+                          ✏️ Load & Edit Full Shift Span
+                        </button>
+                      )}
                       <button onClick={() => setSelectedSnapshotOption(null)} style={{ background: '#e2e8f0', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>&larr; Choose Other Duty Span</button>
                     </div>
                   </div>
@@ -1390,7 +1471,7 @@ export default function App() {
                           <h4 style={{ margin: 0, color: '#1e3a8a', fontSize: '16px' }}>{record.name} <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'normal' }}>({record.ageSex})</span></h4>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <span style={styles.periodBadge}>Admitted: {record.admissionDate || 'N/A'} | Discharged: {record.dischargeDate || 'N/A'}</span>
-                            {belongsToActiveCycle && (
+                            {belongsToActiveCycle && isOriginalTablet && (
                               <button 
                                 onClick={() => handleRestoreArchivedPatient(record)}
                                 style={{ background: '#059669', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}
@@ -1444,31 +1525,33 @@ export default function App() {
               <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Location / Room:</strong> <span style={{ color: '#0284c7', fontWeight: 'bold' }}>{selectedPatient.wardRoom}</span></p>
               <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Attending Physician:</strong> {selectedPatient.physician || 'Not specified'}</p>
             </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <button style={styles.transferButton} onClick={openTransferModal}>
-                {selectedPatient.wardRoom === 'Pending Room Assignment' ? 'Assign Room/Bed' : 'Transfer Bed'}
-              </button>
-              <button 
-                style={styles.editButton} 
-                onClick={() => {
-                  if (isEditingClinical) {
-                    setIsEditingClinical(false);
-                    setIsEditingCoreDetails(false);
-                  } else {
-                    startEditingClinical(selectedPatient);
-                  }
-                }}
-              >
-                {isEditingClinical ? 'Close Edit Form' : 'Edit Clinical Data'}
-              </button>
-            </div>
+            {isOriginalTablet && (
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button style={styles.transferButton} onClick={openTransferModal}>
+                  {selectedPatient.wardRoom === 'Pending Room Assignment' ? 'Assign Room/Bed' : 'Transfer Bed'}
+                </button>
+                <button 
+                  style={styles.editButton} 
+                  onClick={() => {
+                    if (isEditingClinical) {
+                      setIsEditingClinical(false);
+                      setIsEditingCoreDetails(false);
+                    } else {
+                      startEditingClinical(selectedPatient);
+                    }
+                  }}
+                >
+                  {isEditingClinical ? 'Close Edit Form' : 'Edit Clinical Data'}
+                </button>
+              </div>
+            )}
           </div>
 
           <p style={{ marginTop: '12px', fontSize: '14px', color: '#475569' }}><strong>Admission Date:</strong> {selectedPatient.admissionDate} (Hospital Day {calculateHospitalDay(selectedPatient.admissionDate)})</p>
           
           <hr style={styles.divider} />
 
-          {isEditingClinical ? (
+          {isEditingClinical && isOriginalTablet ? (
             <form onSubmit={saveClinicalEdits} style={styles.editFormBox}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                 <h3 style={{ margin: 0, color: '#1e3a8a', fontSize: '18px' }}>Update Clinical Details & Disposition</h3>
@@ -1580,12 +1663,14 @@ export default function App() {
             </>
           )}
 
-          <button style={styles.clearRoomButton} onClick={(e) => handleClearRoom(selectedPatient.id, e)}>
-            Clear Room & Archive Record
-          </button>
+          {isOriginalTablet && (
+            <button style={styles.clearRoomButton} onClick={(e) => handleClearRoom(selectedPatient.id, e)}>
+              Clear Room & Archive Record
+            </button>
+          )}
         </div>
 
-        {isTransferModalOpen && (
+        {isTransferModalOpen && isOriginalTablet && (
           <div style={styles.modalOverlay}>
             <div style={styles.modalCard}>
               <h3 style={{ margin: '0 0 15px 0', color: '#1e3a8a', fontSize: '18px' }}>Assign Room / Transfer &mdash; {selectedPatient.name}</h3>
@@ -1645,33 +1730,42 @@ export default function App() {
           <span style={{ color: '#b45309', fontWeight: 'bold', fontSize: '13px' }}>
             ⚠️ Editing Historical Duty Span: {currentDateString} ({internistOnDuty})
           </span>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
-              onClick={handleSaveArchivedShiftChanges}
-              style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
-            >
-              Save Changes to Archive & Exit
-            </button>
-            <button 
-              onClick={() => {
-                if (window.confirm("Discard changes and return to archive?")) {
-                  setActiveSnapshotId(null);
-                  setCurrentView('archive');
-                }
-              }}
-              style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
-            >
-              Cancel
-            </button>
-          </div>
+          {isOriginalTablet && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                onClick={handleSaveArchivedShiftChanges}
+                style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
+              >
+                Save Changes to Archive & Exit
+              </button>
+              <button 
+                onClick={() => {
+                  if (window.confirm("Discard changes and return to archive?")) {
+                    setActiveSnapshotId(null);
+                    setCurrentView('archive');
+                  }
+                }}
+                style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       <div style={styles.headerRow}>
-        <h2 style={{ margin: 0, fontSize: '20px', color: '#1e3a8a' }}>IM on Duty: <span style={{ color: '#0284c7' }}>{internistOnDuty}</span></h2>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '20px', color: '#1e3a8a' }}>IM on Duty: <span style={{ color: '#0284c7' }}>{internistOnDuty}</span></h2>
+          <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>📅 Duty Span: <strong>{currentDateString}</strong> ({isOriginalTablet ? '📱 Editable Mode' : '👁️ Read-Only Mode'})</p>
+        </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>+ Admit</button>
-          <button style={styles.referralButton} onClick={openAddReferralModal}>+ Referral</button>
+          {isOriginalTablet && (
+            <>
+              <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>+ Admit</button>
+              <button style={styles.referralButton} onClick={openAddReferralModal}>+ Referral</button>
+            </>
+          )}
           <button style={styles.archiveNavBtnHeader} onClick={() => { setCurrentView('archive'); clearAllArchiveSearches(); }}>Archive</button>
           <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>Home</button>
         </div>
@@ -1740,7 +1834,9 @@ export default function App() {
       <h3 style={{ fontSize: '16px', color: '#1e3a8a', marginTop: '25px', marginBottom: '6px' }}>
         IM Inpatients & Unassigned Admissions ({imPatientsList.length})
       </h3>
-      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange patient order.</p>
+      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>
+        {isOriginalTablet ? 'Tip: Use the arrow buttons below to rearrange patient order.' : 'View Mode: Read-Only (Changes can only be made on the original tablet).'}
+      </p>
       
       <div style={styles.listContainer}>
         {imPatientsList.length === 0 ? (
@@ -1765,11 +1861,15 @@ export default function App() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={statusBadge(patient.status)}>{patient.status}</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
-                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
-                  </div>
-                  <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
+                  {isOriginalTablet && (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
+                        <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+                      </div>
+                      <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -1782,7 +1882,9 @@ export default function App() {
           External Department Referrals ({referralPatientsList.length})
         </h3>
       </div>
-      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange referral order.</p>
+      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>
+        {isOriginalTablet ? 'Tip: Use the arrow buttons below to rearrange referral order.' : 'View Mode: Read-Only'}
+      </p>
 
       <div style={styles.listContainer}>
         {referralPatientsList.length === 0 ? (
@@ -1808,11 +1910,15 @@ export default function App() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={statusBadge(patient.status)}>{patient.status}</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
-                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
-                  </div>
-                  <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
+                  {isOriginalTablet && (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
+                        <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+                      </div>
+                      <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -1820,7 +1926,7 @@ export default function App() {
         )}
       </div>
 
-      {isModalOpen && (
+      {isModalOpen && isOriginalTablet && (
         <PatientModal
           room={modalInitialRoom}
           allRooms={fixedRooms}
