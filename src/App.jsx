@@ -795,7 +795,7 @@ export default function App() {
   const referralPatientsList = filteredPatients.filter(p => p.isReferral);
 
   const splashActiveCount = patients.filter(p => p.wardRoom !== 'Pending Room Assignment' && !p.isReferral).length;
-  const splashPendingRoomCount = patients.filter(p => p.wardRoom === 'Pending Room Assignment').length;
+  const splashNewAdmissionsCount = patients.filter(p => p.wardRoom === 'Pending Room Assignment').length;
   const splashForDischargeCount = patients.filter(p => p.status === 'MGH' || p.status === 'For Discharge').length;
   const splashReferralCount = patients.filter(p => p.isReferral || isReferralLocation(p.wardRoom)).length;
 
@@ -893,8 +893,8 @@ export default function App() {
                   <span style={styles.splashMetricLabel}>Active</span>
                 </div>
                 <div style={styles.splashMetricItem}>
-                  <span style={styles.splashMetricNum}>{splashPendingRoomCount}</span>
-                  <span style={styles.splashMetricLabel}>Pending Room</span>
+                  <span style={styles.splashMetricNum}>{splashNewAdmissionsCount}</span>
+                  <span style={styles.splashMetricLabel}>New Admissions</span>
                 </div>
                 <div style={styles.splashMetricItem}>
                   <span style={styles.splashMetricNum}>{splashForDischargeCount}</span>
