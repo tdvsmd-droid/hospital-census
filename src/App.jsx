@@ -219,21 +219,10 @@ export default function App() {
 
   const [activeSnapshotId, setActiveSnapshotId] = useState(null);
 
-  // --- Device Mode States ---
-  const [isEditorDevice, setIsEditorDevice] = useState(() => {
+  // --- Device Mode States (Toggle hidden, locked to stored value) ---
+  const [isEditorDevice] = useState(() => {
     return localStorage.getItem('jrrmdh_is_editor') === 'true';
   });
-  const [editorSetupDone, setEditorSetupDone] = useState(() => {
-    return localStorage.getItem('jrrmdh_editor_claimed') === 'true';
-  });
-
-  const claimEditorDevice = () => {
-    localStorage.setItem('jrrmdh_is_editor', 'true');
-    localStorage.setItem('jrrmdh_editor_claimed', 'true');
-    setIsEditorDevice(true);
-    setEditorSetupDone(true);
-    alert('This device has been successfully registered as the Editor Device.');
-  };
 
   const [currentDateString, setCurrentDateString] = useState(() => {
     return localStorage.getItem('jrrmdh_datespan') || 'September 1 - September 2, 2026';
@@ -1094,24 +1083,12 @@ export default function App() {
           <h2 style={styles.deptTitle}>Department of Internal Medicine</h2>
           <p style={styles.portalSubtitle}>Inpatient Duty Portal &bull; Census & Shift Management System</p>
           
-          {/* --- Editor Toggle Setup Banner --- */}
-          {!editorSetupDone && (
-            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '14px', borderRadius: '8px', marginBottom: '20px' }}>
-              <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#1e40af', fontWeight: 'bold' }}>Device Mode Setup</p>
-              <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#1e3a8a' }}>Is this the main device that should have editor privileges? All other devices will automatically be read-only.</p>
-              <button onClick={claimEditorDevice} style={{ background: '#2563eb', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
-                Turn on Editor Mode for this Device
-              </button>
-            </div>
-          )}
-
-          {editorSetupDone && (
-            <div style={{ marginBottom: '16px' }}>
-              <span style={{ background: isEditorDevice ? '#dcfce7' : '#f1f5f9', color: isEditorDevice ? '#15803d' : '#475569', padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>
-                {isEditorDevice ? '🖥️ This device has Editor Privileges' : '👁️ This device is in Read-Only Mode'}
-              </span>
-            </div>
-          )}
+          {/* --- Device Mode Indicator (Toggle Hidden Permanently) --- */}
+          <div style={{ marginBottom: '16px' }}>
+            <span style={{ background: isEditorDevice ? '#dcfce7' : '#f1f5f9', color: isEditorDevice ? '#15803d' : '#475569', padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>
+              {isEditorDevice ? '🖥️ This device has Editor Privileges' : '👁️ This device is in Read-Only Mode'}
+            </span>
+          </div>
 
           <div style={styles.splashInfoBox}>
             <div style={styles.infoRow}>
@@ -2021,11 +1998,11 @@ const styles = {
   tableRow: {},
   periodBadge: { background: '#e2e8f0', color: '#334155', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
   detailCard: { background: 'white', padding: '32px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0' },
-  backButton: { background: 'none', border: 'none', color: '#2563eb', fontSize: '15px', cursor: 'pointer', marginBottom: '16px', padding: 0, fontWeight: 'bold' },
+  backButton: { background: 'none', border: 'none', color: '#2563eb', fontSize: '15px', cursor: 'pointer', marginBottom: '16px', padding: '0', fontWeight: 'bold' },
   divider: { border: '0', height: '1px', background: '#e2e8f0', margin: '24px 0' },
   endorsementBox: { background: '#f0fdf4', padding: '18px', borderRadius: '8px', borderLeft: '4px solid #10b981', margin: '20px 0', border: '1px solid #d1fae5' },
   editFormBox: { background: '#f8fafc', padding: '24px', borderRadius: '10px', border: '1px solid #cbd5e1', margin: '20px 0' },
-  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: '0', backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '1000' },
+  modalOverlay: { position: 'fixed', top: '0', left: '0', right: '0', bottom: '0', backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '1000' },
   modalCard: { background: 'white', padding: '30px', borderRadius: '14px', width: '100%', maxWidth: '440px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', border: '1px solid #e2e8f0' },
   modalCardLarge: { background: 'white', padding: '30px', borderRadius: '14px', width: '100%', maxWidth: '600px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', border: '1px solid #e2e8f0', maxHeight: '90vh', overflowY: 'auto' },
   modalCloseBtn: { background: 'none', border: 'none', fontSize: '24px', fontWeight: 'bold', color: '#64748b', cursor: 'pointer' },
