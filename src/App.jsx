@@ -309,11 +309,12 @@ export default function App() {
         console.log('Using local fallback for app_settings:', err);
       }
 
-      // 2. Fetch Patients
+      // 2. Fetch Patients (ordered by sort_order)
       try {
         const { data, error } = await supabase
           .from('patients')
-          .select('*');
+          .select('*')
+          .order('sort_order', { ascending: true, nullsFirst: true });
 
         if (error) {
           console.error('Supabase fetch error, using local storage fallback:', error);
@@ -330,7 +331,8 @@ export default function App() {
             endorsement: p.endorsement || {},
             status: p.status,
             physician: p.physician,
-            isReferral: p.is_referral
+            isReferral: p.is_referral,
+            sortOrder: p.sort_order ?? 0
           }));
           setPatients(formattedPatients);
           localStorage.setItem('jrrmdh_patients', JSON.stringify(formattedPatients));
@@ -370,7 +372,8 @@ export default function App() {
           },
           status: 'MGH',
           physician: 'Dr. Maria Santos',
-          isReferral: false
+          isReferral: false,
+          sortOrder: 0
         }
       ]);
     }
@@ -478,30 +481,41 @@ export default function App() {
     return diffDays >= 0 ? diffDays : 0;
   };
 
-  // --- Up / Down Arrow Navigation ---
-  const handleMovePatient = (id, direction, isReferralGroup, e) => {
+  // --- Up / Down Arrow Navigation with Database Sort Order Persistence ---
+  const handleMovePatient = async (id, direction, isReferralGroup, e) => {
     if (e) e.stopPropagation();
     if (!isEditorDevice) {
       alert('This device is in Read-Only mode.');
       return;
     }
 
-    setPatients(prev => {
-      const subList = prev.filter(p => p.isReferral === isReferralGroup);
-      const otherList = prev.filter(p => p.isReferral !== isReferralGroup);
+    const subList = patients.filter(p => p.isReferral === isReferralGroup);
+    const otherList = patients.filter(p => p.isReferral !== isReferralGroup);
 
-      const index = subList.findIndex(p => p.id === id);
-      if (index === -1) return prev;
+    const index = subList.findIndex(p => p.id === id);
+    if (index === -1) return;
 
-      const newIndex = direction === 'up' ? index - 1 : index + 1;
-      if (newIndex < 0 || newIndex >= subList.length) return prev;
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= subList.length) return;
 
-      const updatedSub = [...subList];
-      const [movedItem] = updatedSub.splice(index, 1);
-      updatedSub.splice(newIndex, 0, movedItem);
+    const updatedSub = [...subList];
+    const [movedItem] = updatedSub.splice(index, 1);
+    updatedSub.splice(newIndex, 0, movedItem);
 
-      return isReferralGroup ? [...otherList, ...updatedSub] : [...updatedSub, ...otherList];
-    });
+    const newFullList = isReferralGroup ? [...otherList, ...updatedSub] : [...updatedSub, ...otherList];
+    setPatients(newFullList);
+
+    // Persist sort order to Supabase so all devices and pages reflect the exact stacking
+    try {
+      for (let i = 0; i < newFullList.length; i++) {
+        await supabase
+          .from('patients')
+          .update({ sort_order: i })
+          .eq('id', newFullList[i].id);
+      }
+    } catch (err) {
+      console.log('Error updating sort order in Supabase:', err);
+    }
   };
 
   const handlePerformEndorsement = async () => {
@@ -835,7 +849,8 @@ export default function App() {
       },
       status: archivedRecord.status === 'MGH' ? 'Stable' : (archivedRecord.status || 'Stable'),
       physician: archivedRecord.physician || internistOnDuty,
-      isReferral: targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom)
+      isReferral: targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom),
+      sortOrder: patients.length
     };
 
     try {
@@ -852,7 +867,8 @@ export default function App() {
           endorsement: restoredObj.endorsement,
           status: restoredObj.status,
           physician: restoredObj.physician,
-          is_referral: restoredObj.isReferral
+          is_referral: restoredObj.isReferral,
+          sort_order: restoredObj.sortOrder
         }]);
     } catch (err) {
       console.log('Offline restore local only:', err);
@@ -892,7 +908,8 @@ export default function App() {
       },
       status: assignedStatus,
       physician: formData.physician || internistOnDuty,
-      isReferral: isReferralSave
+      isReferral: isReferralSave,
+      sortOrder: patients.length
     };
 
     try {
@@ -909,7 +926,8 @@ export default function App() {
           endorsement: newPatientObj.endorsement,
           status: newPatientObj.status,
           physician: newPatientObj.physician,
-          is_referral: newPatientObj.isReferral
+          is_referral: newPatientObj.isReferral,
+          sort_order: newPatientObj.sortOrder
         }]);
     } catch (err) {
       console.log('Offline insert local only:', err);
