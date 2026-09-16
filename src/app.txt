@@ -212,12 +212,18 @@ function PatientModal({ room, allRooms, patient, onClose, onSave, onDischarge })
 // --- Main App Component ---
 export default function App() {
   const [currentView, setCurrentView] = useState('splash'); // 'splash', 'census', or 'archive'
+  const [patients, setPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   
   const lastViewedIdRef = useRef(null);
 
   const [activeSnapshotId, setActiveSnapshotId] = useState(null);
+
+  // --- Device Mode States ---
+  const [isEditorDevice] = useState(() => {
+    return localStorage.getItem('jrrmdh_is_editor') === 'true';
+  });
 
   const [currentDateString, setCurrentDateString] = useState(() => {
     return localStorage.getItem('jrrmdh_datespan') || 'September 1 - September 2, 2026';
@@ -233,25 +239,18 @@ export default function App() {
   const [showRevertBox, setShowRevertBox] = useState(false);
   const [revertPassword, setRevertPassword] = useState('');
 
-  useEffect(() => {
-    localStorage.setItem('jrrmdh_datespan', currentDateString);
-  }, [currentDateString]);
-
-  useEffect(() => {
-    localStorage.setItem('jrrmdh_internist', internistOnDuty);
-  }, [internistOnDuty]);
-
+  // Modal Control States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalInitialRoom, setModalInitialRoom] = useState('Pending Room Assignment');
-
+  
+  // Transfer & Clinical Edit States
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferTarget, setTransferTarget] = useState('');
-  const [customTransferText, setCustomTransferText] = useState('');
   const [isCustomTransfer, setIsCustomTransfer] = useState(false);
+  const [customTransferText, setCustomTransferText] = useState('');
 
   const [isEditingClinical, setIsEditingClinical] = useState(false);
   const [isEditingCoreDetails, setIsEditingCoreDetails] = useState(false);
-
   const [clinicalForm, setClinicalForm] = useState({
     name: '',
     ageSex: '',
@@ -263,61 +262,150 @@ export default function App() {
     diagnostics: '',
     therapeutics: '',
     remarks: '',
-    status: 'Stable'
+    status: ''
   });
 
-  // --- Supabase Data Loading on Startup ---
-  const [patients, setPatients] = useState([]);
+  // --- Helper to sync setting to Supabase & localStorage ---
+  const updateCloudSetting = async (key, value) => {
+    if (key === 'datespan') {
+      setCurrentDateString(value);
+      localStorage.setItem('jrrmdh_datespan', value);
+    } else if (key === 'internist') {
+      setInternistOnDuty(value);
+      localStorage.setItem('jrrmdh_internist', value);
+    }
 
+    try {
+      await supabase
+        .from('app_settings')
+        .upsert([{ key, value }]);
+    } catch (err) {
+      console.error(`Error saving setting ${key} to Supabase:`, err);
+    }
+  };
+
+  // Fetch Duty Settings and Patients from Supabase on Mount & Realtime
   useEffect(() => {
-    async function fetchPatients() {
-      const { data, error } = await supabase
-        .from('patients')
-        .select('*');
+    async function fetchSettingsAndPatients() {
+      // 1. Fetch Settings
+      try {
+        const { data: settingsData, error: settingsError } = await supabase
+          .from('app_settings')
+          .select('*');
 
-      if (error) {
-        console.error('Error fetching patients from Supabase:', error);
-      } else if (data && data.length > 0) {
-        const formattedPatients = data.map(p => ({
-          id: p.id,
-          wardRoom: p.ward_room,
-          name: p.name,
-          ageSex: p.age_sex,
-          admissionDate: p.admission_date,
-          admittingDiagnosis: p.admitting_diagnosis,
-          workingImpression: p.working_impression,
-          endorsement: p.endorsement || {},
-          status: p.status,
-          physician: p.physician,
-          isReferral: p.is_referral
-        }));
-        setPatients(formattedPatients);
-      } else {
-        setPatients([
-          {
-            id: 1,
-            wardRoom: '303-1',
-            name: 'Dela Cruz, Juan',
-            ageSex: '65 / M',
-            admissionDate: '2026-08-20',
-            admittingDiagnosis: 'Community-Acquired Pneumonia, High Risk',
-            workingImpression: 'Resolving CAP, rule out secondary bacterial infection',
-            endorsement: {
-              currentCondition: 'Stable, conscious, coherent, mild productive cough.',
-              diagnostics: 'CBC pending. Chest X-ray showed clearing infiltrates.',
-              therapeutics: 'IV Levofloxacin 500mg OD, Salbutamol nebulization Q6H.',
-              remarks: 'Waiting for relative to bring PhilHealth forms.'
-            },
-            status: 'MGH',
-            physician: 'Dr. Maria Santos',
-            isReferral: false
-          }
-        ]);
+        if (!settingsError && settingsData) {
+          settingsData.forEach(item => {
+            if (item.key === 'datespan' && item.value) {
+              setCurrentDateString(item.value);
+              localStorage.setItem('jrrmdh_datespan', item.value);
+            }
+            if (item.key === 'internist' && item.value) {
+              setInternistOnDuty(item.value);
+              localStorage.setItem('jrrmdh_internist', item.value);
+            }
+          });
+        }
+      } catch (err) {
+        console.log('Using local fallback for app_settings:', err);
+      }
+
+      // 2. Fetch Patients
+      try {
+        const { data, error } = await supabase
+          .from('patients')
+          .select('*');
+
+        if (error) {
+          console.error('Supabase fetch error, using local storage fallback:', error);
+          loadFromLocalFallback();
+        } else if (data && data.length > 0) {
+          const formattedPatients = data.map(p => ({
+            id: p.id,
+            wardRoom: p.ward_room,
+            name: p.name,
+            ageSex: p.age_sex,
+            admissionDate: p.admission_date,
+            admittingDiagnosis: p.admitting_diagnosis,
+            workingImpression: p.working_impression,
+            endorsement: p.endorsement || {},
+            status: p.status,
+            physician: p.physician,
+            isReferral: p.is_referral
+          }));
+          setPatients(formattedPatients);
+          localStorage.setItem('jrrmdh_patients', JSON.stringify(formattedPatients));
+        } else {
+          loadFromLocalFallback();
+        }
+      } catch (err) {
+        console.error('Network offline / exception, using local storage fallback:', err);
+        loadFromLocalFallback();
       }
     }
 
-    fetchPatients();
+    function loadFromLocalFallback() {
+      const savedPatients = localStorage.getItem('jrrmdh_patients');
+      if (savedPatients) {
+        try {
+          setPatients(JSON.parse(savedPatients));
+          return;
+        } catch (e) {
+          console.error('Error parsing local patients:', e);
+        }
+      }
+      setPatients([
+        {
+          id: 1,
+          wardRoom: '303-1',
+          name: 'Dela Cruz, Juan',
+          ageSex: '65 / M',
+          admissionDate: '2026-08-20',
+          admittingDiagnosis: 'Community-Acquired Pneumonia, High Risk',
+          workingImpression: 'Resolving CAP, rule out secondary bacterial infection',
+          endorsement: {
+            currentCondition: 'Stable, conscious, coherent, mild productive cough.',
+            diagnostics: 'CBC pending. Chest X-ray showed clearing infiltrates.',
+            therapeutics: 'IV Levofloxacin 500mg OD, Salbutamol nebulization Q6H.',
+            remarks: 'Waiting for relative to bring PhilHealth forms.'
+          },
+          status: 'MGH',
+          physician: 'Dr. Maria Santos',
+          isReferral: false
+        }
+      ]);
+    }
+
+    fetchSettingsAndPatients();
+
+    // Setup Realtime Sync for both Patients and Settings
+    let channel;
+    try {
+      channel = supabase
+        .channel('public:jrrmdh_live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
+          fetchSettingsAndPatients();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => {
+          fetchSettingsAndPatients();
+        })
+        .subscribe();
+    } catch (e) {
+      console.log('Realtime subscription skipped offline.');
+    }
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, []);
+
+  // Save patients to localStorage whenever they change for offline support
+  useEffect(() => {
+    if (patients.length > 0) {
+      localStorage.setItem('jrrmdh_patients', JSON.stringify(patients));
+    }
+  }, [patients]);
 
   const [dischargedArchive, setDischargedArchive] = useState(() => {
     const savedArchive = localStorage.getItem('jrrmdh_archive');
@@ -343,85 +431,10 @@ export default function App() {
     localStorage.setItem('jrrmdh_archive', JSON.stringify(dischargedArchive));
   }, [dischargedArchive]);
 
-  // --- Full Data Migration Function (Tablet Optimized) ---
-  const migrateAllDataToSupabase = async () => {
-    let successCount = 0;
-    let errorLog = [];
-
-    alert('Starting migration to Supabase cloud...');
-
-    // 1. Migrate Active Patients State
-    if (patients && patients.length > 0) {
-      for (const p of patients) {
-        const { error } = await supabase
-          .from('patients')
-          .upsert([{
-            id: p.id || Date.now(),
-            ward_room: p.wardRoom || 'Pending Room Assignment',
-            name: p.name,
-            age_sex: p.ageSex,
-            admission_date: p.admissionDate,
-            admitting_diagnosis: p.admittingDiagnosis,
-            working_impression: p.workingImpression || p.admittingDiagnosis,
-            endorsement: p.endorsement || {},
-            status: p.status || 'Stable',
-            physician: p.physician || internistOnDuty,
-            is_referral: p.isReferral || false
-          }]);
-
-        if (error) {
-          errorLog.push(`Active Patient (${p.name}): ${error.message}`);
-        } else {
-          successCount++;
-        }
-      }
-    } else {
-      errorLog.push('Active patients array was empty during migration attempt.');
-    }
-
-    // 2. Migrate Archive Data from LocalStorage
-    const savedArchive = localStorage.getItem('jrrmdh_archive');
-    if (savedArchive) {
-      try {
-        const archiveArray = JSON.parse(savedArchive);
-        for (const item of archiveArray) {
-          const { error } = await supabase
-            .from('archive')
-            .upsert([{
-              id: item.id || Date.now(),
-              name: item.name,
-              age_sex: item.ageSex,
-              admission_date: item.admissionDate,
-              discharge_date: item.dischargeDate,
-              admission_period: item.admissionPeriod,
-              physician: item.physician,
-              final_impression: item.finalImpression,
-              is_snapshot: item.isSnapshot || false,
-              snapshot_patients: item.snapshotPatients || []
-            }]);
-
-          if (error) {
-            errorLog.push(`Archive Record (${item.name}): ${error.message}`);
-          }
-        }
-      } catch (e) {
-        errorLog.push('Failed to parse local archive storage JSON.');
-      }
-    }
-
-    // 3. Report results directly on the tablet screen
-    if (errorLog.length > 0) {
-      alert(`Migration completed with errors:\n\n- ${errorLog.join('\n- ')}`);
-    } else {
-      alert(`Success! Migrated ${successCount} active patient records and all archive logs to Supabase.`);
-    }
-  };
-
-  // Section 1: Duty Date Search State
+  // Search States
   const [dutyDateQuery, setDutyDateQuery] = useState('');
   const [selectedSnapshotOption, setSelectedSnapshotOption] = useState(null);
 
-  // Section 2: Patient Details Search States (Tabbed)
   const [activeDetailTab, setActiveDetailTab] = useState('name');
   const [nameQuery, setNameQuery] = useState('');
   const [admissionDateQuery, setAdmissionDateQuery] = useState('');
@@ -467,6 +480,10 @@ export default function App() {
 
   const movePatientOrder = (id, direction, e) => {
     if (e) e.stopPropagation();
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
     setPatients(prev => {
       const targetPatient = prev.find(p => p.id === id);
       if (!targetPatient) return prev;
@@ -490,7 +507,12 @@ export default function App() {
     });
   };
 
-  const handlePerformEndorsement = () => {
+  const handlePerformEndorsement = async () => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
+
     if (activeSnapshotId) {
       alert("Please exit or save your current historical edit session before performing a new forward endorsement.");
       return;
@@ -525,14 +547,20 @@ export default function App() {
     };
 
     setDischargedArchive(prev => [snapshotRecord, ...prev]);
-    setInternistOnDuty(incomingDoctor);
-    setCurrentDateString(dutyPeriodSpan);
-    localStorage.setItem('jrrmdh_datespan', dutyPeriodSpan);
+    
+    await updateCloudSetting('internist', incomingDoctor);
+    await updateCloudSetting('datespan', dutyPeriodSpan);
+
     alert(`Shift successfully endorsed to ${incomingDoctor}!\nDuty Period updated to [ ${dutyPeriodSpan} ]. Snapshot saved to archives.`);
   };
 
-  const handleRevertEndorsement = (e) => {
+  const handleRevertEndorsement = async (e) => {
     e.preventDefault();
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
+
     if (revertPassword !== 'IMjprizal000') {
       alert("Incorrect password.");
       return;
@@ -552,22 +580,22 @@ export default function App() {
         setPatients(targetSnapshot.snapshotPatients);
       }
 
+      let targetInternist = 'Dr. Maria Santos';
       if (targetSnapshot.previousInternist) {
-        setInternistOnDuty(targetSnapshot.previousInternist);
+        targetInternist = targetSnapshot.previousInternist;
       } else {
         const nameMatch = targetSnapshot.name.match(/\((.*?) ->/);
         if (nameMatch && nameMatch[1]) {
-          setInternistOnDuty(nameMatch[1]);
+          targetInternist = nameMatch[1];
         }
       }
+      await updateCloudSetting('internist', targetInternist);
 
+      let targetDateStr = targetSnapshot.admissionPeriod;
       if (targetSnapshot.previousDateString) {
-        setCurrentDateString(targetSnapshot.previousDateString);
-        localStorage.setItem('jrrmdh_datespan', targetSnapshot.previousDateString);
-      } else {
-        setCurrentDateString(targetSnapshot.admissionPeriod);
-        localStorage.setItem('jrrmdh_datespan', targetSnapshot.admissionPeriod);
+        targetDateStr = targetSnapshot.previousDateString;
       }
+      await updateCloudSetting('datespan', targetDateStr);
 
       setDischargedArchive(prev => prev.filter((_, idx) => idx !== latestSnapshotIndex));
       setActiveSnapshotId(null);
@@ -581,21 +609,30 @@ export default function App() {
     }
   };
 
-  const handleLoadSnapshotForEditing = (snapshot) => {
+  const handleLoadSnapshotForEditing = async (snapshot) => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
+
     const confirmLoad = window.confirm(
       `Do you want to load the duty span [ ${snapshot.admissionPeriod} ] into the active workspace for editing? You can add admissions, discharge, and save changes back to the archive.`
     );
     if (!confirmLoad) return;
 
-    setCurrentDateString(snapshot.admissionPeriod);
+    await updateCloudSetting('datespan', snapshot.admissionPeriod);
+
+    let targetInternist = internistOnDuty;
     if (snapshot.previousInternist) {
-      setInternistOnDuty(snapshot.previousInternist);
+      targetInternist = snapshot.previousInternist;
     } else {
       const nameMatch = snapshot.name.match(/\((.*?) ->/);
       if (nameMatch && nameMatch[1]) {
-        setInternistOnDuty(nameMatch[1]);
+        targetInternist = nameMatch[1];
       }
     }
+    await updateCloudSetting('internist', targetInternist);
+
     if (snapshot.snapshotPatients) {
       setPatients(snapshot.snapshotPatients);
     }
@@ -632,16 +669,28 @@ export default function App() {
   };
 
   const openNewAdmissionModal = () => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
     setModalInitialRoom('Pending Room Assignment');
     setIsModalOpen(true);
   };
 
   const openAddReferralModal = () => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
     setModalInitialRoom('');
     setIsModalOpen(true);
   };
 
   const openTransferModal = () => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
     setTransferTarget(fixedRooms[0]);
     setIsCustomTransfer(false);
     setCustomTransferText('');
@@ -667,19 +716,17 @@ export default function App() {
 
     const isNowReferral = targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom);
 
-    const { error } = await supabase
-      .from('patients')
-      .update({ 
-        ward_room: targetRoom, 
-        is_referral: isNowReferral,
-        status: (selectedPatient.status === 'Referral' && !isNowReferral) ? 'New Admission' : selectedPatient.status
-      })
-      .eq('id', selectedPatient.id);
-
-    if (error) {
-      console.error('Error updating room in Supabase:', error);
-      alert('Failed to update room in database.');
-      return;
+    try {
+      await supabase
+        .from('patients')
+        .update({ 
+          ward_room: targetRoom, 
+          is_referral: isNowReferral,
+          status: (selectedPatient.status === 'Referral' && !isNowReferral) ? 'New Admission' : selectedPatient.status
+        })
+        .eq('id', selectedPatient.id);
+    } catch (err) {
+      console.log('Offline transfer update local only:', err);
     }
 
     setPatients(prev => prev.map(p => {
@@ -702,6 +749,11 @@ export default function App() {
 
   const handleClearRoom = async (idOrRoom, e) => {
     if (e) e.stopPropagation();
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
+
     if (window.confirm("Clear this room and send the patient record directly to the Archive?")) {
       const patientToClear = patients.find(p => p.id === idOrRoom || p.wardRoom === idOrRoom);
       
@@ -731,13 +783,13 @@ export default function App() {
           return [archivedRecord, ...prev];
         });
 
-        const { error } = await supabase
-          .from('patients')
-          .delete()
-          .eq('id', patientToClear.id);
-
-        if (error) {
-          console.error('Error deleting patient from Supabase:', error);
+        try {
+          await supabase
+            .from('patients')
+            .delete()
+            .eq('id', patientToClear.id);
+        } catch (err) {
+          console.log('Offline delete local only:', err);
         }
       }
 
@@ -750,6 +802,11 @@ export default function App() {
   };
 
   const handleRestoreArchivedPatient = async (archivedRecord) => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
+
     const confirmRestore = window.confirm(`Do you want to restore ${archivedRecord.name} back to the active census?`);
     if (!confirmRestore) return;
 
@@ -784,26 +841,24 @@ export default function App() {
       isReferral: targetRoom === 'Pending Room Assignment' || isReferralLocation(targetRoom)
     };
 
-    const { error } = await supabase
-      .from('patients')
-      .insert([{
-        id: newId,
-        ward_room: restoredObj.wardRoom,
-        name: restoredObj.name,
-        age_sex: restoredObj.ageSex,
-        admission_date: restoredObj.admissionDate,
-        admitting_diagnosis: restoredObj.admittingDiagnosis,
-        working_impression: restoredObj.workingImpression,
-        endorsement: restoredObj.endorsement,
-        status: restoredObj.status,
-        physician: restoredObj.physician,
-        is_referral: restoredObj.isReferral
-      }]);
-
-    if (error) {
-      console.error('Error restoring patient to Supabase:', error);
-      alert('Failed to save restored patient to database.');
-      return;
+    try {
+      await supabase
+        .from('patients')
+        .insert([{
+          id: newId,
+          ward_room: restoredObj.wardRoom,
+          name: restoredObj.name,
+          age_sex: restoredObj.ageSex,
+          admission_date: restoredObj.admissionDate,
+          admitting_diagnosis: restoredObj.admittingDiagnosis,
+          working_impression: restoredObj.workingImpression,
+          endorsement: restoredObj.endorsement,
+          status: restoredObj.status,
+          physician: restoredObj.physician,
+          is_referral: restoredObj.isReferral
+        }]);
+    } catch (err) {
+      console.log('Offline restore local only:', err);
     }
 
     setPatients(prev => [...prev, restoredObj]);
@@ -843,26 +898,24 @@ export default function App() {
       isReferral: isReferralSave
     };
 
-    const { error } = await supabase
-      .from('patients')
-      .insert([{
-        id: newId,
-        ward_room: newPatientObj.wardRoom,
-        name: newPatientObj.name,
-        age_sex: newPatientObj.ageSex,
-        admission_date: newPatientObj.admissionDate,
-        admitting_diagnosis: newPatientObj.admittingDiagnosis,
-        working_impression: newPatientObj.workingImpression,
-        endorsement: newPatientObj.endorsement,
-        status: newPatientObj.status,
-        physician: newPatientObj.physician,
-        is_referral: newPatientObj.isReferral
-      }]);
-
-    if (error) {
-      console.error('Error saving new patient to Supabase:', error);
-      alert('Failed to save admission record to database.');
-      return;
+    try {
+      await supabase
+        .from('patients')
+        .insert([{
+          id: newId,
+          ward_room: newPatientObj.wardRoom,
+          name: newPatientObj.name,
+          age_sex: newPatientObj.ageSex,
+          admission_date: newPatientObj.admissionDate,
+          admitting_diagnosis: newPatientObj.admittingDiagnosis,
+          working_impression: newPatientObj.workingImpression,
+          endorsement: newPatientObj.endorsement,
+          status: newPatientObj.status,
+          physician: newPatientObj.physician,
+          is_referral: newPatientObj.isReferral
+        }]);
+    } catch (err) {
+      console.log('Offline insert local only:', err);
     }
 
     setPatients(prev => [...prev, newPatientObj]);
@@ -870,6 +923,10 @@ export default function App() {
   };
 
   const startEditingClinical = (patient) => {
+    if (!isEditorDevice) {
+      alert('This device is in Read-Only mode.');
+      return;
+    }
     setClinicalForm({
       name: patient.name || '',
       ageSex: patient.ageSex || '',
@@ -907,15 +964,13 @@ export default function App() {
       endorsement: updatedEndorsement
     };
 
-    const { error } = await supabase
-      .from('patients')
-      .update(updatePayload)
-      .eq('id', selectedPatient.id);
-
-    if (error) {
-      console.error('Error updating clinical edits in Supabase:', error);
-      alert('Failed to save updates to database.');
-      return;
+    try {
+      await supabase
+        .from('patients')
+        .update(updatePayload)
+        .eq('id', selectedPatient.id);
+    } catch (err) {
+      console.log('Offline update local only:', err);
     }
 
     setPatients(prev => prev.map(p => {
@@ -1016,6 +1071,12 @@ export default function App() {
           <h2 style={styles.deptTitle}>Department of Internal Medicine</h2>
           <p style={styles.portalSubtitle}>Inpatient Duty Portal &bull; Census & Shift Management System</p>
           
+          <div style={{ marginBottom: '16px' }}>
+            <span style={{ background: isEditorDevice ? '#dcfce7' : '#f1f5f9', color: isEditorDevice ? '#15803d' : '#475569', padding: '6px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>
+              {isEditorDevice ? '🖥️ This device has Editor Privileges' : '👁️ This device is in Read-Only Mode'}
+            </span>
+          </div>
+
           <div style={styles.splashInfoBox}>
             <div style={styles.infoRow}>
               <span style={styles.infoLabel}>📅 Duty Span:</span>
@@ -1035,8 +1096,10 @@ export default function App() {
                     />
                     <button 
                       style={styles.savePhysicianBtn} 
-                      onClick={() => {
-                        if(tempInternist.trim()) setInternistOnDuty(tempInternist.trim());
+                      onClick={async () => {
+                        if(tempInternist.trim()) {
+                          await updateCloudSetting('internist', tempInternist.trim());
+                        }
                         setIsEditingInternist(false);
                       }}
                     >
@@ -1046,15 +1109,17 @@ export default function App() {
                 ) : (
                   <>
                     <span style={styles.infoValue}>{internistOnDuty}</span>
-                    <button 
-                      style={styles.editPhysicianBtn} 
-                      onClick={() => {
-                        setTempInternist(internistOnDuty);
-                        setIsEditingInternist(true);
-                      }}
-                    >
-                      Change
-                    </button>
+                    {isEditorDevice && (
+                      <button 
+                        style={styles.editPhysicianBtn} 
+                        onClick={() => {
+                          setTempInternist(internistOnDuty);
+                          setIsEditingInternist(true);
+                        }}
+                      >
+                        Change
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -1095,45 +1160,46 @@ export default function App() {
             <button style={styles.enterButton} onClick={() => setCurrentView('census')}>
               Enter Daily Census Dashboard
             </button>
-            <button style={styles.endorseSplashButton} onClick={handlePerformEndorsement}>
-              🔄 Endorse Shift (New Duty Span & Handover)
-            </button>
-            <button style={styles.migrateButton} onClick={migrateAllDataToSupabase}>
-              🚀 Migrate All Local Data to Supabase
-            </button>
-          </div>
-
-          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '15px', textAlign: 'left' }}>
-            {!showRevertBox ? (
-              <button 
-                onClick={() => setShowRevertBox(true)} 
-                style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
-              >
-                ⚠️ Accidental endorsement? Click here to revert...
+            {isEditorDevice && (
+              <button style={styles.endorseSplashButton} onClick={handlePerformEndorsement}>
+                🔄 Endorse Shift (New Duty Span & Handover)
               </button>
-            ) : (
-              <form onSubmit={handleRevertEndorsement} style={{ background: '#fef2f2', padding: '14px', borderRadius: '8px', border: '1px solid #fca5a5' }}>
-                <h4 style={{ margin: '0 0 6px 0', color: '#991b1b', fontSize: '14px' }}>Revert Accidental Shift Endorsement</h4>
-                <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#7f1d1d' }}>Enter password to restore previous duty span and census data from archive:</p>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input 
-                    type="password" 
-                    placeholder="Enter password..." 
-                    value={revertPassword}
-                    onChange={(e) => setRevertPassword(e.target.value)}
-                    style={{ ...styles.input, fontSize: '13px', padding: '6px 10px' }}
-                    required
-                  />
-                  <button type="submit" style={{ background: '#dc2626', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    Revert
-                  </button>
-                  <button type="button" onClick={() => { setShowRevertBox(false); setRevertPassword(''); }} style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
-                    Cancel
-                  </button>
-                </div>
-              </form>
             )}
           </div>
+
+          {isEditorDevice && (
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '15px', textAlign: 'left' }}>
+              {!showRevertBox ? (
+                <button 
+                  onClick={() => setShowRevertBox(true)} 
+                  style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}
+                >
+                  ⚠️ Accidental endorsement? Click here to revert...
+                </button>
+              ) : (
+                <form onSubmit={handleRevertEndorsement} style={{ background: '#fef2f2', padding: '14px', borderRadius: '8px', border: '1px solid #fca5a5' }}>
+                  <h4 style={{ margin: '0 0 6px 0', color: '#991b1b', fontSize: '14px' }}>Revert Accidental Shift Endorsement</h4>
+                  <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#7f1d1d' }}>Enter password to restore previous duty span and census data from archive:</p>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input 
+                      type="password" 
+                      placeholder="Enter password..." 
+                      value={revertPassword}
+                      onChange={(e) => setRevertPassword(e.target.value)}
+                      style={{ ...styles.input, fontSize: '13px', padding: '6px 10px' }}
+                      required
+                    />
+                    <button type="submit" style={{ background: '#dc2626', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      Revert
+                    </button>
+                    <button type="button" onClick={() => { setShowRevertBox(false); setRevertPassword(''); }} style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1188,12 +1254,14 @@ export default function App() {
                           <span>📦 {snap.name}</span>
                           <span style={{ background: '#fef3c7', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>{snap.admissionPeriod}</span>
                         </button>
-                        <button
-                          onClick={() => handleLoadSnapshotForEditing(snap)}
-                          style={{ background: '#d97706', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap' }}
-                        >
-                          ✏️ Edit This Shift
-                        </button>
+                        {isEditorDevice && (
+                          <button
+                            onClick={() => handleLoadSnapshotForEditing(snap)}
+                            style={{ background: '#d97706', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap' }}
+                          >
+                            ✏️ Edit This Shift
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1205,12 +1273,14 @@ export default function App() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
                     <h4 style={{ margin: 0, color: '#059669', fontSize: '16px' }}>📦 {selectedSnapshotOption.name}</h4>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button 
-                        onClick={() => handleLoadSnapshotForEditing(selectedSnapshotOption)}
-                        style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
-                      >
-                        ✏️ Load & Edit Full Shift Span
-                      </button>
+                      {isEditorDevice && (
+                        <button 
+                          onClick={() => handleLoadSnapshotForEditing(selectedSnapshotOption)}
+                          style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                        >
+                          ✏️ Load & Edit Full Shift Span
+                        </button>
+                      )}
                       <button onClick={() => setSelectedSnapshotOption(null)} style={{ background: '#e2e8f0', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>&larr; Choose Other Duty Span</button>
                     </div>
                   </div>
@@ -1390,7 +1460,7 @@ export default function App() {
                           <h4 style={{ margin: 0, color: '#1e3a8a', fontSize: '16px' }}>{record.name} <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'normal' }}>({record.ageSex})</span></h4>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <span style={styles.periodBadge}>Admitted: {record.admissionDate || 'N/A'} | Discharged: {record.dischargeDate || 'N/A'}</span>
-                            {belongsToActiveCycle && (
+                            {belongsToActiveCycle && isEditorDevice && (
                               <button 
                                 onClick={() => handleRestoreArchivedPatient(record)}
                                 style={{ background: '#059669', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}
@@ -1444,31 +1514,33 @@ export default function App() {
               <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Location / Room:</strong> <span style={{ color: '#0284c7', fontWeight: 'bold' }}>{selectedPatient.wardRoom}</span></p>
               <p style={{ margin: '4px 0', fontSize: '14px' }}><strong>Attending Physician:</strong> {selectedPatient.physician || 'Not specified'}</p>
             </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <button style={styles.transferButton} onClick={openTransferModal}>
-                {selectedPatient.wardRoom === 'Pending Room Assignment' ? 'Assign Room/Bed' : 'Transfer Bed'}
-              </button>
-              <button 
-                style={styles.editButton} 
-                onClick={() => {
-                  if (isEditingClinical) {
-                    setIsEditingClinical(false);
-                    setIsEditingCoreDetails(false);
-                  } else {
-                    startEditingClinical(selectedPatient);
-                  }
-                }}
-              >
-                {isEditingClinical ? 'Close Edit Form' : 'Edit Clinical Data'}
-              </button>
-            </div>
+            {isEditorDevice && (
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button style={styles.transferButton} onClick={openTransferModal}>
+                  {selectedPatient.wardRoom === 'Pending Room Assignment' ? 'Assign Room/Bed' : 'Transfer Bed'}
+                </button>
+                <button 
+                  style={styles.editButton} 
+                  onClick={() => {
+                    if (isEditingClinical) {
+                      setIsEditingClinical(false);
+                      setIsEditingCoreDetails(false);
+                    } else {
+                      startEditingClinical(selectedPatient);
+                    }
+                  }}
+                >
+                  {isEditingClinical ? 'Close Edit Form' : 'Edit Clinical Data'}
+                </button>
+              </div>
+            )}
           </div>
 
           <p style={{ marginTop: '12px', fontSize: '14px', color: '#475569' }}><strong>Admission Date:</strong> {selectedPatient.admissionDate} (Hospital Day {calculateHospitalDay(selectedPatient.admissionDate)})</p>
           
           <hr style={styles.divider} />
 
-          {isEditingClinical ? (
+          {isEditingClinical && isEditorDevice ? (
             <form onSubmit={saveClinicalEdits} style={styles.editFormBox}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                 <h3 style={{ margin: 0, color: '#1e3a8a', fontSize: '18px' }}>Update Clinical Details & Disposition</h3>
@@ -1580,12 +1652,14 @@ export default function App() {
             </>
           )}
 
-          <button style={styles.clearRoomButton} onClick={(e) => handleClearRoom(selectedPatient.id, e)}>
-            Clear Room & Archive Record
-          </button>
+          {isEditorDevice && (
+            <button style={styles.clearRoomButton} onClick={(e) => handleClearRoom(selectedPatient.id, e)}>
+              Clear Room & Archive Record
+            </button>
+          )}
         </div>
 
-        {isTransferModalOpen && (
+        {isTransferModalOpen && isEditorDevice && (
           <div style={styles.modalOverlay}>
             <div style={styles.modalCard}>
               <h3 style={{ margin: '0 0 15px 0', color: '#1e3a8a', fontSize: '18px' }}>Assign Room / Transfer &mdash; {selectedPatient.name}</h3>
@@ -1645,33 +1719,44 @@ export default function App() {
           <span style={{ color: '#b45309', fontWeight: 'bold', fontSize: '13px' }}>
             ⚠️ Editing Historical Duty Span: {currentDateString} ({internistOnDuty})
           </span>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
-              onClick={handleSaveArchivedShiftChanges}
-              style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
-            >
-              Save Changes to Archive & Exit
-            </button>
-            <button 
-              onClick={() => {
-                if (window.confirm("Discard changes and return to archive?")) {
-                  setActiveSnapshotId(null);
-                  setCurrentView('archive');
-                }
-              }}
-              style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
-            >
-              Cancel
-            </button>
-          </div>
+          {isEditorDevice && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                onClick={handleSaveArchivedShiftChanges}
+                style={{ background: '#d97706', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
+              >
+                Save Changes to Archive & Exit
+              </button>
+              <button 
+                onClick={() => {
+                  if (window.confirm("Discard changes and return to archive?")) {
+                    setActiveSnapshotId(null);
+                    setCurrentView('archive');
+                  }
+                }}
+                style={{ background: '#64748b', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       <div style={styles.headerRow}>
-        <h2 style={{ margin: 0, fontSize: '20px', color: '#1e3a8a' }}>IM on Duty: <span style={{ color: '#0284c7' }}>{internistOnDuty}</span></h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <h2 style={{ margin: 0, fontSize: '20px', color: '#1e3a8a' }}>IM on Duty: <span style={{ color: '#0284c7' }}>{internistOnDuty}</span></h2>
+          <span style={{ background: isEditorDevice ? '#dcfce7' : '#f1f5f9', color: isEditorDevice ? '#15803d' : '#475569', padding: '4px 10px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>
+            {isEditorDevice ? '🖥️ Editor' : '👁️ Read-Only'}
+          </span>
+        </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>+ Admit</button>
-          <button style={styles.referralButton} onClick={openAddReferralModal}>+ Referral</button>
+          {isEditorDevice && (
+            <>
+              <button style={styles.admitNewButton} onClick={openNewAdmissionModal}>+ Admit</button>
+              <button style={styles.referralButton} onClick={openAddReferralModal}>+ Referral</button>
+            </>
+          )}
           <button style={styles.archiveNavBtnHeader} onClick={() => { setCurrentView('archive'); clearAllArchiveSearches(); }}>Archive</button>
           <button style={styles.homeButton} onClick={() => setCurrentView('splash')}>Home</button>
         </div>
@@ -1740,7 +1825,9 @@ export default function App() {
       <h3 style={{ fontSize: '16px', color: '#1e3a8a', marginTop: '25px', marginBottom: '6px' }}>
         IM Inpatients & Unassigned Admissions ({imPatientsList.length})
       </h3>
-      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange patient order.</p>
+      {isEditorDevice && (
+        <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange patient order.</p>
+      )}
       
       <div style={styles.listContainer}>
         {imPatientsList.length === 0 ? (
@@ -1765,11 +1852,15 @@ export default function App() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={statusBadge(patient.status)}>{patient.status}</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
-                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
-                  </div>
-                  <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
+                  {isEditorDevice && (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
+                        <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+                      </div>
+                      <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -1782,7 +1873,9 @@ export default function App() {
           External Department Referrals ({referralPatientsList.length})
         </h3>
       </div>
-      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange referral order.</p>
+      {isEditorDevice && (
+        <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the arrow buttons below to rearrange referral order.</p>
+      )}
 
       <div style={styles.listContainer}>
         {referralPatientsList.length === 0 ? (
@@ -1808,11 +1901,15 @@ export default function App() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={statusBadge(patient.status)}>{patient.status}</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
-                    <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
-                  </div>
-                  <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
+                  {isEditorDevice && (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'up', e)} title="Move Up">▲</button>
+                        <button style={styles.orderArrowBtn} onClick={(e) => movePatientOrder(patient.id, 'down', e)} title="Move Down">▼</button>
+                      </div>
+                      <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -1820,7 +1917,7 @@ export default function App() {
         )}
       </div>
 
-      {isModalOpen && (
+      {isModalOpen && isEditorDevice && (
         <PatientModal
           room={modalInitialRoom}
           allRooms={fixedRooms}
@@ -1859,7 +1956,6 @@ const styles = {
 
   enterButton: { background: '#2563eb', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   endorseSplashButton: { background: '#059669', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
-  migrateButton: { background: '#7c3aed', color: 'white', border: 'none', padding: '14px 20px', fontSize: '15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   admitNewButton: { background: '#2563eb', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   archiveNavBtnHeader: { background: '#f59e0b', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
   container: { maxWidth: '960px', margin: '30px auto', padding: '24px', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif', background: '#f8fafc', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' },
@@ -1885,11 +1981,11 @@ const styles = {
   tableRow: {},
   periodBadge: { background: '#e2e8f0', color: '#334155', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
   detailCard: { background: 'white', padding: '32px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0' },
-  backButton: { background: 'none', border: 'none', color: '#2563eb', fontSize: '15px', cursor: 'pointer', marginBottom: '16px', padding: 0, fontWeight: 'bold' },
+  backButton: { background: 'none', border: 'none', color: '#2563eb', fontSize: '15px', cursor: 'pointer', marginBottom: '16px', padding: '0', fontWeight: 'bold' },
   divider: { border: '0', height: '1px', background: '#e2e8f0', margin: '24px 0' },
   endorsementBox: { background: '#f0fdf4', padding: '18px', borderRadius: '8px', borderLeft: '4px solid #10b981', margin: '20px 0', border: '1px solid #d1fae5' },
   editFormBox: { background: '#f8fafc', padding: '24px', borderRadius: '10px', border: '1px solid #cbd5e1', margin: '20px 0' },
-  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: '0', backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '1000' },
+  modalOverlay: { position: 'fixed', top: '0', left: '0', right: '0', bottom: '0', backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '1000' },
   modalCard: { background: 'white', padding: '30px', borderRadius: '14px', width: '100%', maxWidth: '440px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', border: '1px solid #e2e8f0' },
   modalCardLarge: { background: 'white', padding: '30px', borderRadius: '14px', width: '100%', maxWidth: '600px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', border: '1px solid #e2e8f0', maxHeight: '90vh', overflowY: 'auto' },
   modalCloseBtn: { background: 'none', border: 'none', fontSize: '24px', fontWeight: 'bold', color: '#64748b', cursor: 'pointer' },
