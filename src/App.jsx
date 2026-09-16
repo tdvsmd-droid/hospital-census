@@ -239,6 +239,32 @@ export default function App() {
   const [showRevertBox, setShowRevertBox] = useState(false);
   const [revertPassword, setRevertPassword] = useState('');
 
+  // Modal Control States
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalInitialRoom, setModalInitialRoom] = useState('Pending Room Assignment');
+  
+  // Transfer & Clinical Edit States
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferTarget, setTransferTarget] = useState('');
+  const [isCustomTransfer, setIsCustomTransfer] = useState(false);
+  const [customTransferText, setCustomTransferText] = useState('');
+
+  const [isEditingClinical, setIsEditingClinical] = useState(false);
+  const [isEditingCoreDetails, setIsEditingCoreDetails] = useState(false);
+  const [clinicalForm, setClinicalForm] = useState({
+    name: '',
+    ageSex: '',
+    admissionDate: '',
+    physician: '',
+    admittingDiagnosis: '',
+    workingImpression: '',
+    currentCondition: '',
+    diagnostics: '',
+    therapeutics: '',
+    remarks: '',
+    status: ''
+  });
+
   // --- Helper to sync setting to Supabase & localStorage ---
   const updateCloudSetting = async (key, value) => {
     if (key === 'datespan') {
