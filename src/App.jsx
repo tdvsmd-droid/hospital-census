@@ -228,6 +228,8 @@ export default function App() {
   const [currentDateString, setCurrentDateString] = useState(() => {
     return localStorage.getItem('jrrmdh_datespan') || 'September 1 - September 2, 2026';
   });
+  const [isEditingDatespan, setIsEditingDatespan] = useState(false);
+  const [tempDatespan, setTempDatespan] = useState('');
 
   const [internistOnDuty, setInternistOnDuty] = useState(() => {
     return localStorage.getItem('jrrmdh_internist') || 'Dr. Maria Santos';
@@ -1095,7 +1097,45 @@ export default function App() {
           <div style={styles.splashInfoBox}>
             <div style={styles.infoRow}>
               <span style={styles.infoLabel}>📅 Duty Span:</span>
-              <span style={styles.infoValue}>{currentDateString}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {isEditingDatespan ? (
+                  <>
+                    <input 
+                      type="text" 
+                      value={tempDatespan} 
+                      onChange={(e) => setTempDatespan(e.target.value)}
+                      style={styles.physicianInput}
+                      placeholder="Enter duty span..."
+                    />
+                    <button 
+                      style={styles.savePhysicianBtn} 
+                      onClick={async () => {
+                        if(tempDatespan.trim()) {
+                          await updateCloudSetting('datespan', tempDatespan.trim());
+                        }
+                        setIsEditingDatespan(false);
+                      }}
+                    >
+                      Save
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span style={styles.infoValue}>{currentDateString}</span>
+                    {isEditorDevice && (
+                      <button 
+                        style={styles.editPhysicianBtn} 
+                        onClick={() => {
+                          setTempDatespan(currentDateString);
+                          setIsEditingDatespan(true);
+                        }}
+                      >
+                        Change
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
             <div style={styles.infoRow}>
               <span style={styles.infoLabel}>👨‍⚕️ IM on Duty:</span>
