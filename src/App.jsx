@@ -478,7 +478,7 @@ export default function App() {
     return diffDays >= 0 ? diffDays : 0;
   };
 
-  // --- Replaced Drag-and-Drop with Up / Down Arrow Navigation ---
+  // --- Up / Down Arrow Navigation ---
   const handleMovePatient = (id, direction, isReferralGroup, e) => {
     if (e) e.stopPropagation();
     if (!isEditorDevice) {
@@ -494,7 +494,7 @@ export default function App() {
       if (index === -1) return prev;
 
       const newIndex = direction === 'up' ? index - 1 : index + 1;
-      if (newIndex < 0 || newIndex >= subList.length) return prev; // boundary check
+      if (newIndex < 0 || newIndex >= subList.length) return prev;
 
       const updatedSub = [...subList];
       const [movedItem] = updatedSub.splice(index, 1);
