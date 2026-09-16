@@ -217,7 +217,6 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   
   const lastViewedIdRef = useRef(null);
-  const draggedItemIdRef = useRef(null);
 
   const [activeSnapshotId, setActiveSnapshotId] = useState(null);
 
@@ -479,50 +478,30 @@ export default function App() {
     return diffDays >= 0 ? diffDays : 0;
   };
 
-  const handleDragStart = (e, id) => {
-    if (!isEditorDevice) return;
-    draggedItemIdRef.current = id;
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
-
-  const handleDrop = (e, targetId, isReferralGroup) => {
-    e.preventDefault();
+  // --- Replaced Drag-and-Drop with Up / Down Arrow Navigation ---
+  const handleMovePatient = (id, direction, isReferralGroup, e) => {
+    if (e) e.stopPropagation();
     if (!isEditorDevice) {
       alert('This device is in Read-Only mode.');
       return;
     }
 
-    const draggedId = draggedItemIdRef.current;
-    if (!draggedId || draggedId === targetId) return;
-
     setPatients(prev => {
-      const targetPatient = prev.find(p => p.id === targetId);
-      if (!targetPatient) return prev;
+      const subList = prev.filter(p => p.isReferral === isReferralGroup);
+      const otherList = prev.filter(p => p.isReferral !== isReferralGroup);
 
-      const isRef = targetPatient.isReferral;
-      if (isRef !== isReferralGroup) return prev;
+      const index = subList.findIndex(p => p.id === id);
+      if (index === -1) return prev;
 
-      const subList = prev.filter(p => p.isReferral === isRef);
-      const otherList = prev.filter(p => p.isReferral !== isRef);
-
-      const draggedIndex = subList.findIndex(p => p.id === draggedId);
-      const targetIndex = subList.findIndex(p => p.id === targetId);
-
-      if (draggedIndex === -1 || targetIndex === -1) return prev;
+      const newIndex = direction === 'up' ? index - 1 : index + 1;
+      if (newIndex < 0 || newIndex >= subList.length) return prev; // boundary check
 
       const updatedSub = [...subList];
-      const [movedItem] = updatedSub.splice(draggedIndex, 1);
-      updatedSub.splice(targetIndex, 0, movedItem);
+      const [movedItem] = updatedSub.splice(index, 1);
+      updatedSub.splice(newIndex, 0, movedItem);
 
-      return isRef ? [...otherList, ...updatedSub] : [...updatedSub, ...otherList];
+      return isReferralGroup ? [...otherList, ...updatedSub] : [...updatedSub, ...otherList];
     });
-
-    draggedItemIdRef.current = null;
   };
 
   const handlePerformEndorsement = async () => {
@@ -1844,25 +1823,21 @@ export default function App() {
         IM Inpatients & Unassigned Admissions ({imPatientsList.length})
       </h3>
       {isEditorDevice && (
-        <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Drag and drop patient rows to rearrange their display order.</p>
+        <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the Up and Down arrow buttons to rearrange patient display order.</p>
       )}
       
       <div style={styles.listContainer}>
         {imPatientsList.length === 0 ? (
           <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No IM inpatients found.</p>
         ) : (
-          imPatientsList.map(patient => {
+          imPatientsList.map((patient, index) => {
             return (
               <div 
                 key={patient.id} 
                 id={`patient-row-${patient.id}`} 
-                draggable={isEditorDevice}
-                onDragStart={(e) => handleDragStart(e, patient.id)}
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, patient.id, false)}
                 style={{ 
                   ...styles.patientRow, 
-                  cursor: isEditorDevice ? 'grab' : 'pointer',
+                  cursor: 'pointer',
                   borderTop: '5px solid #2563eb',
                   background: 'white'
                 }} 
@@ -1872,10 +1847,28 @@ export default function App() {
                   <h4 style={{ margin: '0 0 4px 0', color: '#1e3a8a', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
                   <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis} (Day {calculateHospitalDay(patient.admissionDate)})</p>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={statusBadge(patient.status)}>{patient.status}</span>
                   {isEditorDevice && (
-                    <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      <button 
+                        style={styles.arrowBtn} 
+                        disabled={index === 0} 
+                        onClick={(e) => handleMovePatient(patient.id, 'up', false, e)}
+                        title="Move Up"
+                      >
+                        ⬆️
+                      </button>
+                      <button 
+                        style={styles.arrowBtn} 
+                        disabled={index === imPatientsList.length - 1} 
+                        onClick={(e) => handleMovePatient(patient.id, 'down', false, e)}
+                        title="Move Down"
+                      >
+                        ⬇️
+                      </button>
+                      <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Room">Clear</button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1890,26 +1883,22 @@ export default function App() {
         </h3>
       </div>
       {isEditorDevice && (
-        <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Drag and drop referral rows to rearrange their display order.</p>
+        <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontStyle: 'italic' }}>Tip: Use the Up and Down arrow buttons to rearrange referral display order.</p>
       )}
 
       <div style={styles.listContainer}>
         {referralPatientsList.length === 0 ? (
           <p style={{ textAlign: 'center', padding: '20px', color: '#666', background: '#fff', borderRadius: '10px' }}>No active referrals.</p>
         ) : (
-          referralPatientsList.map(patient => {
+          referralPatientsList.map((patient, index) => {
             return (
               <div 
                 key={patient.id} 
                 id={`patient-row-${patient.id}`} 
-                draggable={isEditorDevice}
-                onDragStart={(e) => handleDragStart(e, patient.id)}
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, patient.id, true)}
                 style={{ 
                   ...styles.patientRow, 
                   borderLeftColor: '#10b981',
-                  cursor: isEditorDevice ? 'grab' : 'pointer',
+                  cursor: 'pointer',
                   borderTop: '5px solid #10b981',
                   background: 'white'
                 }} 
@@ -1919,10 +1908,28 @@ export default function App() {
                   <h4 style={{ margin: '0 0 4px 0', color: '#059669', fontSize: '16px' }}>{patient.wardRoom} &mdash; {patient.name}</h4>
                   <p style={{ margin: 0, fontSize: '14px', color: '#475569' }}>{patient.workingImpression || patient.admittingDiagnosis}</p>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={statusBadge(patient.status)}>{patient.status}</span>
                   {isEditorDevice && (
-                    <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      <button 
+                        style={styles.arrowBtn} 
+                        disabled={index === 0} 
+                        onClick={(e) => handleMovePatient(patient.id, 'up', true, e)}
+                        title="Move Up"
+                      >
+                        ⬆️
+                      </button>
+                      <button 
+                        style={styles.arrowBtn} 
+                        disabled={index === referralPatientsList.length - 1} 
+                        onClick={(e) => handleMovePatient(patient.id, 'down', true, e)}
+                        title="Move Down"
+                      >
+                        ⬇️
+                      </button>
+                      <button style={styles.smallClearBtn} onClick={(e) => handleClearRoom(patient.id, e)} title="Clear Record">Clear</button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -2009,5 +2016,6 @@ const styles = {
   saveClinicalBtn: { background: '#10b981', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' },
   cancelBtn: { background: '#64748b', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' },
   clearRoomButton: { background: '#ef4444', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', marginTop: '24px' },
-  smallClearBtn: { background: '#fee2e2', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }
+  smallClearBtn: { background: '#fee2e2', color: '#b91c1c', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
+  arrowBtn: { background: '#e2e8f0', color: '#334155', border: 'none', padding: '6px 8px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }
 };
